@@ -1,0 +1,7 @@
+neat-python>=0.92
+numpy>=1.26
+torch>=2.3
+torchvision>=0.18
+streamlit>=1.34
+matplotlib>=3.8
+pandas>=2.2
