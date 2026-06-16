@@ -30,6 +30,7 @@ def occlusion_map(model: nn.Module, image: torch.Tensor, image_size: int) -> tor
 
     model.eval()
     flat = image.flatten().unsqueeze(0)
+    channels = _infer_channels(flat.shape[1], image_size)
     logits = model(flat)
     probabilities = torch.softmax(logits, dim=1)
     predicted_class = int(probabilities.argmax(dim=1).item())
@@ -38,7 +39,8 @@ def occlusion_map(model: nn.Module, image: torch.Tensor, image_size: int) -> tor
     importance = torch.zeros(image_size * image_size)
     for pixel in range(image_size * image_size):
         occluded = flat.clone()
-        occluded[0, pixel] = 0.0
+        for channel in range(channels):
+            occluded[0, channel * image_size * image_size + pixel] = 0.0
         occluded_probability = torch.softmax(model(occluded), dim=1)[0, predicted_class]
         importance[pixel] = torch.clamp(baseline_score - occluded_probability, min=0.0)
 
@@ -46,6 +48,15 @@ def occlusion_map(model: nn.Module, image: torch.Tensor, image_size: int) -> tor
     if max_value > 0:
         importance = importance / max_value
     return importance.reshape(image_size, image_size)
+
+
+def _infer_channels(flat_size: int, image_size: int) -> int:
+    pixels = image_size * image_size
+    if flat_size % pixels != 0:
+        raise ValueError(
+            f"Flattened input size {flat_size} is incompatible with image size {image_size}."
+        )
+    return flat_size // pixels
 
 
 def compare_maps(

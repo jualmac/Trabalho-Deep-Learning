@@ -1,4 +1,4 @@
-# MVP: NEAT e interpretabilidade no MNIST
+# MVP: NEAT e interpretabilidade em MNIST/CIFAR-10
 
 Este MVP demonstra a ideia da proposta em uma versao pequena, colocando a
 interpretacao das redes no centro da comparacao:
@@ -7,10 +7,10 @@ interpretacao das redes no centro da comparacao:
 2. evoluir uma rede pequena com NEAT;
 3. reaproveitar a topologia encontrada pelo NEAT, reinicializar os pesos e treinar com SGD.
 
-As imagens do MNIST sao reduzidas para 14x14 para que a evolucao ainda rode em
-tempo de demo, mas os digitos continuem reconheciveis a olho nu. A acuracia aparece apenas como controle de sanidade; a pergunta
-principal e se os mapas de importancia visual mudam entre a rede convencional e
-a rede que usa a topologia descoberta por evolucao.
+Por padrao o experimento roda no MNIST com imagens `26x26`. A mesma estrutura
+tambem roda no CIFAR-10 com imagens `32x32`. A acuracia aparece como controle de
+sanidade; a pergunta principal e se os mapas de importancia visual mudam entre a
+rede convencional e a rede que usa a topologia descoberta por evolucao.
 
 ## O que observar
 
@@ -58,25 +58,88 @@ python -m pip install -r requirements.txt
 
 ### 3. Rodar o experimento
 
-Este comando baixa o MNIST automaticamente, evolui a topologia com NEAT, treina
-os pesos com SGD e salva os artefatos usados pela interface.
+Este comando baixa o MNIST automaticamente, testa variantes de NEAT, escolhe a
+melhor pelo desempenho do NEAT puro, retreina os pesos da arquitetura vencedora
+com SGD e salva os artefatos usados pela interface.
+
+O conjunto padrao usa imagens `26x26` e gera tres linhas de comparacao: o NEAT
+default `neat_mnist_features_full`, uma variante Seeded NEAT
+`neat_mnist_seeded_prototypes_full` e uma variante HyperNEAT-like
+`hyperneat_mnist_prototypes_cppn`. Assim o experimento compara o default com duas
+variantes realmente diferentes do paper/ecossistema NEAT. O modelo mostrado nos
+exemplos e no PDF e sempre o vencedor por desempenho de `NEAT puro`.
 
 ```bash
 PYTHONPATH=src python -m neuroevolution_mvp.cli
 ```
 
+Para rodar no CIFAR-10:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli --dataset cifar10
+```
+
+Tambem e possivel controlar a resolucao:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli --dataset cifar10 --image-size 26
+```
+
 Para uma execucao ainda mais curta:
 
 ```bash
-PYTHONPATH=src python -m neuroevolution_mvp.cli --generations 1 --train-limit 300 --test-limit 100 --epochs 1
+PYTHONPATH=src python -m neuroevolution_mvp.cli --generations 1 --train-limit 300 --test-limit 100 --epochs 1 --evolved-epochs 1
 ```
+
+Para testar uma imagem maior no MNIST sem criar um genoma direto gigante, use a
+variante HyperNEAT-like de pixels crus, que evolui uma CPPN geradora de pesos:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli --image-size 32 --neat-variant hyperneat_mnist_cppn
+```
+
+No CIFAR-10, use as variantes baseadas em `features`, `prototypes` ou
+`hyperneat_*_features/prototypes`. As variantes antigas de pixels crus foram
+mantidas para MNIST monocromatico.
 
 Os resultados ficam em:
 
-- `src/artifacts/results.json`;
-- `src/artifacts/winner_genome.pkl`;
-- `src/artifacts/baseline_mlp.pt`;
-- `src/artifacts/evolved_topology_sgd.pt`.
+- `src/artifacts/<dataset>/results.json`;
+- `src/artifacts/<dataset>/winner_genome.pkl`;
+- `src/artifacts/<dataset>/baseline_mlp.pt`;
+- `src/artifacts/<dataset>/evolved_topology_sgd.pt`;
+- `src/artifacts/<dataset>/<dataset>_interpretability_validation.pdf`.
+
+## Datasets, modelos e otimizadores
+
+Datasets:
+
+- `mnist`: padrao, `1` canal, resolucao padrao `26x26`;
+- `cifar10`: `3` canais RGB, resolucao padrao `32x32`.
+
+Modelos comparados:
+
+- `Baseline SGD`: CNN compacta treinada do zero com SGD;
+- `NEAT puro`: evolui arquitetura e pesos, sem retreino por gradiente;
+- `NEAT + SGD`: reaproveita a arquitetura vencedora do NEAT e retreina os pesos
+  com SGD.
+
+Variantes NEAT padrao:
+
+- `neat_mnist_features_full`: default, usa descritores compactos de imagem;
+- `neat_mnist_seeded_prototypes_full`: Seeded/Prototype NEAT, inicia parte da
+  populacao com conexoes fortes para prototipos de classe;
+- `hyperneat_mnist_prototypes_cppn`: HyperNEAT-like, evolui uma CPPN que gera o
+  substrato de pesos sobre atributos de prototipo.
+
+Otimizador:
+
+- O unico otimizador de retreino e `SGD`, para manter clara a comparacao entre
+  pesos evoluidos pelo NEAT e pesos treinados por gradiente.
+
+No CIFAR-10, as features compactas convertem a imagem RGB para intensidade media
+antes dos descritores de forma. As features de prototipo usam o vetor RGB
+completo, entao preservam cor na comparacao com os centroides de classe.
 
 ### 4. Abrir a aplicacao
 
@@ -113,7 +176,7 @@ PYTHONPATH=src streamlit run src/app.py --server.port 8502
 - `src/neuroevolution_mvp/neat_runner.py`: evolucao e avaliacao com NEAT.
 - `src/neuroevolution_mvp/models.py`: modelos PyTorch.
 - `src/neuroevolution_mvp/interpretability.py`: mapas de oclusao e comparacao.
-- `src/configs/neat_mnist_14x14.ini`: configuracao do NEAT.
+- `src/configs/neat_mnist_14x14*.ini`: variantes de configuracao do NEAT.
 
 A interface tem abas para:
 

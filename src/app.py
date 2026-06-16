@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
@@ -12,16 +13,29 @@ import streamlit as st
 import torch
 
 from neuroevolution_mvp.artifacts import load_genome, load_json
-from neuroevolution_mvp.config import DEFAULT_ARTIFACT_DIR, ExperimentConfig
-from neuroevolution_mvp.data import load_mnist, set_seed
+from neuroevolution_mvp.config import ALL_NEAT_VARIANT_CONFIGS, DEFAULT_ARTIFACT_DIR, ExperimentConfig
+from neuroevolution_mvp.data import SUPPORTED_DATASETS, load_dataset, set_seed
 from neuroevolution_mvp.experiment import artifact_exists, run_experiment
+from neuroevolution_mvp.features import FEATURE_SIZE, PROTOTYPE_FEATURE_SIZE
 from neuroevolution_mvp.interpretability import (
     compare_maps,
     occlusion_map,
     prediction_summary,
 )
-from neuroevolution_mvp.models import BaselineMLP, EvolvedTopologyMLP, FixedNeatTopologyMLP
-from neuroevolution_mvp.neat_runner import load_neat_config
+from neuroevolution_mvp.models import (
+    BaselineMLP,
+    EvolvedTopologyMLP,
+    FeatureWrappedModel,
+    FixedNeatTopologyMLP,
+    GeneratedSubstrateMLP,
+    PrototypeWrappedModel,
+)
+from neuroevolution_mvp.neat_runner import (
+    build_hyperneat_feature_substrate,
+    build_hyperneat_prototype_substrate,
+    build_hyperneat_substrate,
+    load_neat_config,
+)
 
 
 st.set_page_config(page_title="NEAT + Interpretabilidade", layout="wide")
@@ -70,27 +84,34 @@ def main() -> None:
 def _sidebar_config() -> ExperimentConfig:
     defaults = ExperimentConfig()
     st.sidebar.header("Experimento")
-    st.sidebar.caption("Valores pequenos deixam a demo rapida para sala.")
-    generations = st.sidebar.slider("Geracoes NEAT", 1, 12, defaults.neat_generations)
-    epochs = st.sidebar.slider("Epocas SGD", 1, 12, defaults.baseline_epochs)
-    train_limit = st.sidebar.slider("Amostras de treino", 200, 2_500, defaults.train_limit, step=100)
-    test_limit = st.sidebar.slider("Amostras de teste", 100, 1_000, defaults.test_limit, step=100)
+    st.sidebar.caption("Valores maiores dao mais chance ao NEAT puro.")
+    dataset = st.sidebar.selectbox(
+        "Dataset",
+        SUPPORTED_DATASETS,
+        index=SUPPORTED_DATASETS.index(defaults.dataset),
+    )
+    generations = st.sidebar.slider("Geracoes NEAT", 1, 80, defaults.neat_generations)
+    epochs = st.sidebar.slider("Epocas SGD", 1, 50, defaults.baseline_epochs)
+    train_limit = st.sidebar.slider("Amostras de treino", 200, 10_000, defaults.train_limit, step=100)
+    test_limit = st.sidebar.slider("Amostras de teste", 100, 2_000, defaults.test_limit, step=100)
     neat_eval_limit = st.sidebar.slider(
         "Amostras por avaliacao NEAT",
         100,
-        1_000,
+        5_000,
         defaults.neat_eval_limit,
         step=100,
     )
 
     return ExperimentConfig(
+        dataset=dataset,
+        image_size=32 if dataset == "cifar10" else defaults.image_size,
         neat_generations=generations,
         baseline_epochs=epochs,
         evolved_sgd_epochs=epochs,
         train_limit=train_limit,
         test_limit=test_limit,
         neat_eval_limit=neat_eval_limit,
-        artifact_dir=DEFAULT_ARTIFACT_DIR,
+        artifact_dir=DEFAULT_ARTIFACT_DIR / dataset,
     )
 
 
@@ -102,7 +123,10 @@ def _load_or_run_results(config: ExperimentConfig) -> dict | None:
 
     if artifact_exists(config.artifact_dir):
         results = load_json(config.artifact_dir / "results.json")
-        if int(results["config"].get("image_size", 0)) != config.image_size:
+        if (
+            int(results["config"].get("image_size", 0)) != config.image_size
+            or str(results["config"].get("dataset", "mnist")) != config.dataset
+        ):
             st.sidebar.warning("Artefatos antigos detectados. Rode um novo experimento.")
             return None
         st.sidebar.success("Artefatos carregados.")
@@ -154,7 +178,7 @@ def _show_examples(config: ExperimentConfig) -> None:
 
     st.subheader("Exemplos: regioes usadas pela decisao")
     st.caption(
-        "Use os botoes de digito para abrir um exemplo daquele rotulo, ou navegue "
+        "Use os botoes de classe para abrir um exemplo daquele rotulo, ou navegue "
         "amostra por amostra. O ultimo mapa mostra onde NEAT puro e NEAT + SGD divergem."
     )
 
@@ -168,7 +192,7 @@ def _show_examples(config: ExperimentConfig) -> None:
         st.session_state.sample_index = min(len(data.x_test) - 1, st.session_state.sample_index + 1)
 
     selected = controls[2].slider(
-        "Amostra MNIST",
+        f"Amostra {config.dataset.upper()}",
         0,
         len(data.x_test) - 1,
         st.session_state.sample_index,
@@ -176,14 +200,18 @@ def _show_examples(config: ExperimentConfig) -> None:
     st.session_state.sample_index = selected
 
     digit_examples = _first_index_by_digit(data.y_test)
-    st.markdown('<div class="digit-picker">Exemplo por digito</div>', unsafe_allow_html=True)
+    st.markdown('<div class="digit-picker">Exemplo por classe</div>', unsafe_allow_html=True)
     quick_cols = st.columns(10)
     for digit, col in enumerate(quick_cols):
         disabled = digit not in digit_examples
         if col.button(str(digit), use_container_width=True, disabled=disabled):
             st.session_state.sample_index = digit_examples[digit]
 
-    image = data.x_test[st.session_state.sample_index].reshape(config.image_size, config.image_size)
+    image = _reshape_image(
+        data.x_test[st.session_state.sample_index],
+        config.image_size,
+        config.image_channels,
+    )
     label = int(data.y_test[st.session_state.sample_index].item())
     st.caption(f"Amostra selecionada: indice {st.session_state.sample_index}, rotulo {label}.")
 
@@ -205,7 +233,7 @@ def _show_examples(config: ExperimentConfig) -> None:
     metric_cols[5].metric("Pixels comuns", f"{map_comparison['top_pixel_overlap']:.1%}")
 
     fig_cols = st.columns(5)
-    fig_cols[0].pyplot(_heatmap_figure(image, "Digito original", "Greys"), use_container_width=True)
+    fig_cols[0].pyplot(_heatmap_figure(image, "Imagem original", "Greys"), use_container_width=True)
     fig_cols[0].markdown(_prediction_badge("Rotulo", label, None), unsafe_allow_html=True)
     fig_cols[1].pyplot(_heatmap_figure(baseline_map, "Olhar: baseline SGD", "Greens"), use_container_width=True)
     fig_cols[1].markdown(
@@ -243,7 +271,40 @@ def _show_examples(config: ExperimentConfig) -> None:
 
 def _show_topology(config: ExperimentConfig, results: dict) -> None:
     _, _, _, _, genome = _load_demo_objects(config)
-    neat_config = load_neat_config(config.neat_config_path)
+    neat_config = load_neat_config(_selected_config_path(config, results))
+    if results.get("summary", {}).get("selected_neat_family") == "hyperneat":
+        st.subheader("Visao da topologia evoluida")
+        st.info(
+            "A variante selecionada foi HyperNEAT-like: a topologia evoluida e uma CPPN "
+            "que gera a matriz de pesos do substrato pixel-classe."
+        )
+        return
+    if results.get("summary", {}).get("selected_neat_family") == "hyperneat_features":
+        st.subheader("Visao da topologia evoluida")
+        st.info(
+            "A variante selecionada foi HyperNEAT-like sobre um substrato de atributos compactos. "
+            "A CPPN evoluida gera a matriz de pesos desse substrato."
+        )
+        return
+    if results.get("summary", {}).get("selected_neat_family") == "hyperneat_prototypes":
+        st.subheader("Visao da topologia evoluida")
+        st.info(
+            "A variante selecionada foi HyperNEAT-like sobre um substrato de prototipos. "
+            "A CPPN evoluida gera a matriz de pesos desse substrato."
+        )
+        return
+    if results.get("summary", {}).get("selected_neat_family") == "features":
+        st.subheader("Visao da topologia evoluida")
+        st.info(
+            "A variante selecionada usa atributos compactos do digito antes da rede NEAT. "
+            "A topologia abaixo e do classificador evoluido sobre esses atributos."
+        )
+    if results.get("summary", {}).get("selected_neat_family") in {"prototypes", "seeded_prototypes"}:
+        st.subheader("Visao da topologia evoluida")
+        st.info(
+            "A variante selecionada usa similaridade com prototipos medios de cada digito "
+            "antes da rede NEAT. A topologia abaixo e do classificador evoluido sobre esses atributos."
+        )
     evolved = EvolvedTopologyMLP(genome, neat_config, input_size=config.input_size)
 
     summary = results["summary"]
@@ -308,27 +369,96 @@ def _show_tracking(results: dict) -> None:
 def _load_demo_objects(
     config: ExperimentConfig,
 ) -> tuple[object, BaselineMLP, FixedNeatTopologyMLP, EvolvedTopologyMLP, object]:
-    data = load_mnist(
+    data = load_dataset(
+        config.dataset,
         image_size=config.image_size,
         train_limit=100,
         test_limit=config.test_limit,
         batch_size=config.batch_size,
         seed=config.seed,
     )
-    neat_config = load_neat_config(config.neat_config_path)
+    results = load_json(config.artifact_dir / "results.json")
+    neat_config = load_neat_config(_selected_config_path(config, results))
     genome = load_genome(config.artifact_dir / "winner_genome.pkl")
-    baseline = BaselineMLP(config.input_size, config.hidden_units)
-    neat_pure = FixedNeatTopologyMLP(genome, neat_config, input_size=config.input_size)
-    evolved = EvolvedTopologyMLP(genome, neat_config, input_size=config.input_size)
+    baseline = BaselineMLP(
+        config.input_size,
+        config.hidden_units,
+        image_channels=config.image_channels,
+    )
+    if results.get("summary", {}).get("selected_neat_family") == "hyperneat":
+        weight_matrix, bias = build_hyperneat_substrate(genome, neat_config, config.image_size)
+        weight_tensor = torch.from_numpy(weight_matrix).float()
+        bias_tensor = torch.from_numpy(bias).float()
+        neat_pure = GeneratedSubstrateMLP(weight_tensor, bias_tensor, trainable=False)
+        evolved = GeneratedSubstrateMLP(weight_tensor, bias_tensor, trainable=True)
+    elif results.get("summary", {}).get("selected_neat_family") == "hyperneat_features":
+        weight_matrix, bias = build_hyperneat_feature_substrate(genome, neat_config)
+        weight_tensor = torch.from_numpy(weight_matrix).float()
+        bias_tensor = torch.from_numpy(bias).float()
+        neat_pure = FeatureWrappedModel(
+            GeneratedSubstrateMLP(weight_tensor, bias_tensor, trainable=False),
+            config.image_size,
+        )
+        evolved = FeatureWrappedModel(
+            GeneratedSubstrateMLP(weight_tensor, bias_tensor, trainable=True),
+            config.image_size,
+        )
+    elif results.get("summary", {}).get("selected_neat_family") == "hyperneat_prototypes":
+        centroids = torch.load(config.artifact_dir / "prototype_centroids.pt", map_location="cpu")
+        weight_matrix, bias = build_hyperneat_prototype_substrate(genome, neat_config)
+        weight_tensor = torch.from_numpy(weight_matrix).float()
+        bias_tensor = torch.from_numpy(bias).float()
+        neat_pure = PrototypeWrappedModel(
+            GeneratedSubstrateMLP(weight_tensor, bias_tensor, trainable=False),
+            centroids,
+        )
+        evolved = PrototypeWrappedModel(
+            GeneratedSubstrateMLP(weight_tensor, bias_tensor, trainable=True),
+            centroids,
+        )
+    elif results.get("summary", {}).get("selected_neat_family") in {"prototypes", "seeded_prototypes"}:
+        centroids = torch.load(config.artifact_dir / "prototype_centroids.pt", map_location="cpu")
+        neat_pure = PrototypeWrappedModel(
+            FixedNeatTopologyMLP(genome, neat_config, input_size=PROTOTYPE_FEATURE_SIZE),
+            centroids,
+        )
+        evolved = PrototypeWrappedModel(
+            EvolvedTopologyMLP(genome, neat_config, input_size=PROTOTYPE_FEATURE_SIZE),
+            centroids,
+        )
+    elif results.get("summary", {}).get("selected_neat_family") == "features":
+        neat_pure = FeatureWrappedModel(
+            FixedNeatTopologyMLP(genome, neat_config, input_size=FEATURE_SIZE),
+            config.image_size,
+        )
+        evolved = FeatureWrappedModel(
+            EvolvedTopologyMLP(genome, neat_config, input_size=FEATURE_SIZE),
+            config.image_size,
+        )
+    else:
+        neat_pure = FixedNeatTopologyMLP(genome, neat_config, input_size=config.input_size)
+        evolved = EvolvedTopologyMLP(genome, neat_config, input_size=config.input_size)
 
     baseline.load_state_dict(torch.load(config.artifact_dir / "baseline_mlp.pt"))
     evolved.load_state_dict(torch.load(config.artifact_dir / "evolved_topology_sgd.pt"))
     return data, baseline, neat_pure, evolved, genome
 
 
+def _selected_config_path(config: ExperimentConfig, results: dict) -> Path:
+    selected = results.get("summary", {}).get("selected_neat_variant")
+    candidate_paths = (*config.neat_variant_paths, *ALL_NEAT_VARIANT_CONFIGS, config.neat_config_path)
+    for path in candidate_paths:
+        if path.stem == selected:
+            return path
+    return config.neat_config_path
+
+
 def _heatmap_figure(matrix: torch.Tensor, title: str, cmap: str):
     fig, ax = plt.subplots(figsize=(3, 3), facecolor="#f7fbf2")
-    ax.imshow(matrix.detach().numpy(), cmap=cmap, interpolation="nearest")
+    if matrix.ndim == 3:
+        ax.imshow(matrix.detach().permute(1, 2, 0).numpy(), interpolation="nearest")
+    else:
+        ax.imshow(matrix.detach().numpy(), cmap=cmap, interpolation="nearest")
     ax.set_title(title, fontsize=11, color="#17351f")
     ax.set_xticks([])
     ax.set_yticks([])
@@ -336,6 +466,12 @@ def _heatmap_figure(matrix: torch.Tensor, title: str, cmap: str):
         spine.set_color("#b8d8ad")
     fig.tight_layout(pad=0.3)
     return fig
+
+
+def _reshape_image(image: torch.Tensor, image_size: int, image_channels: int) -> torch.Tensor:
+    if image_channels == 1:
+        return image.reshape(image_size, image_size)
+    return image.reshape(image_channels, image_size, image_size)
 
 
 def _first_index_by_digit(labels: torch.Tensor) -> dict[int, int]:

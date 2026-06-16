@@ -13,10 +13,14 @@ def train_classifier(
     test_loader: DataLoader,
     epochs: int,
     learning_rate: float,
+    optimizer_name: str = "sgd",
 ) -> list[dict[str, float]]:
     """Train a classifier with SGD and return per-epoch metrics."""
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    if optimizer_name != "sgd":
+        raise ValueError("This experiment compares NEAT against SGD retraining only.")
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, nesterov=True)
+
     criterion = nn.CrossEntropyLoss()
     history: list[dict[str, float]] = []
 
