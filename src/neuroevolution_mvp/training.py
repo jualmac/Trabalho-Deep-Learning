@@ -6,6 +6,39 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+def build_optimizer(
+    model: nn.Module,
+    optimizer_name: str,
+    learning_rate: float,
+) -> torch.optim.Optimizer:
+    normalized_name = optimizer_name.strip().lower()
+
+    if normalized_name == "sgd":
+        return torch.optim.SGD(
+            model.parameters(),
+            lr=learning_rate,
+            momentum=0.9,
+            nesterov=True,
+        )
+
+    if normalized_name == "adam":
+        return torch.optim.Adam(
+            model.parameters(),
+            lr=learning_rate,
+        )
+
+    if normalized_name == "adamw":
+        return torch.optim.AdamW(
+            model.parameters(),
+            lr=learning_rate,
+            weight_decay=1e-4,
+        )
+
+    raise ValueError(
+        f"Unsupported optimizer '{optimizer_name}'. "
+        "Use one of: sgd, adam, adamw."
+    )
+
 
 def train_classifier(
     model: nn.Module,
@@ -15,12 +48,13 @@ def train_classifier(
     learning_rate: float,
     optimizer_name: str = "sgd",
 ) -> list[dict[str, float]]:
-    """Train a classifier with SGD and return per-epoch metrics."""
+    """Train a classifier and return per-epoch metrics."""
 
-    if optimizer_name != "sgd":
-        raise ValueError("This experiment compares NEAT against SGD retraining only.")
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, nesterov=True)
-
+    optimizer = build_optimizer(
+        model=model,
+        optimizer_name=optimizer_name,
+        learning_rate=learning_rate,
+    )
     criterion = nn.CrossEntropyLoss()
     history: list[dict[str, float]] = []
 

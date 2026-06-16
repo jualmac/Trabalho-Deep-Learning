@@ -49,6 +49,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
     )
+    parser.add_argument(
+        "--optimizer",
+        choices=("sgd", "adam", "adamw"),
+        default="sgd",
+        )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=ExperimentConfig.learning_rate,
+        help="Learning rate used by the gradient optimizer.",
+    )
     return parser
 
 
@@ -67,6 +78,8 @@ def main() -> None:
         evolved_sgd_epochs=args.evolved_epochs,
         artifact_dir=artifact_dir,
         neat_variant_paths=variant_paths,
+        optimizer_name=args.optimizer,
+        learning_rate=args.learning_rate,
     )
     results = run_experiment(config)
     pdf_path = args.pdf_path or artifact_dir / f"{args.dataset}_interpretability_validation.pdf"

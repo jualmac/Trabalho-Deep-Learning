@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Subset, TensorDataset
 from torchvision import datasets, transforms
 
 
-SUPPORTED_DATASETS = ("mnist", "cifar10")
+SUPPORTED_DATASETS = ("mnist", "mnist100", "fashion_mnist", "cifar10")
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,68 @@ def _subset(dataset, limit: int, seed: int) -> Subset:
     indices = torch.randperm(len(dataset), generator=generator)[:size].tolist()
     return Subset(dataset, indices)
 
+def _dataset_targets(dataset) -> list[int]:
+    targets = getattr(dataset, "targets", None)
+
+    if targets is None:
+        return [int(dataset[index][1]) for index in range(len(dataset))]
+
+    if isinstance(targets, torch.Tensor):
+        return [int(target) for target in targets.tolist()]
+
+    return [int(target) for target in targets]
+
+
+def _balanced_subset(
+    dataset,
+    samples_per_class: int,
+    seed: int,
+    class_count: int = 10,
+) -> Subset:
+    targets = _dataset_targets(dataset)
+    shuffled_indices = list(range(len(targets)))
+    random.Random(seed).shuffle(shuffled_indices)
+
+    indices_by_class: dict[int, list[int]] = {
+        class_id: [] for class_id in range(class_count)
+    }
+
+    for index in shuffled_indices:
+        class_id = targets[index]
+
+        if class_id not in indices_by_class:
+            continue
+
+        if len(indices_by_class[class_id]) >= samples_per_class:
+            continue
+
+        indices_by_class[class_id].append(index)
+
+        if all(
+            len(class_indices) == samples_per_class
+            for class_indices in indices_by_class.values()
+        ):
+            break
+
+    missing_classes = [
+        class_id
+        for class_id, class_indices in indices_by_class.items()
+        if len(class_indices) < samples_per_class
+    ]
+
+    if missing_classes:
+        raise ValueError(
+            "Could not build a balanced subset for classes: "
+            f"{', '.join(str(class_id) for class_id in missing_classes)}."
+        )
+
+    selected_indices = [
+        index
+        for class_id in range(class_count)
+        for index in indices_by_class[class_id]
+    ]
+
+    return Subset(dataset, selected_indices)
 
 def _stack_subset(subset: Subset) -> tuple[torch.Tensor, torch.Tensor]:
     images: list[torch.Tensor] = []
@@ -88,6 +150,26 @@ def load_dataset(
         test = datasets.MNIST(data_dir, train=False, download=True, transform=transform)
         image_channels = 1
         class_names = tuple(str(label) for label in range(10))
+    elif normalized_name == "mnist100":
+        train = datasets.MNIST(data_dir, train=True, download=True, transform=transform)
+        test = datasets.MNIST(data_dir, train=False, download=True, transform=transform)
+        image_channels = 1
+        class_names = tuple(str(label) for label in range(10))
+    elif normalized_name == "fashion_mnist":
+        train = datasets.FashionMNIST(
+            data_dir,
+            train=True,
+            download=True,
+            transform=transform,
+        )
+        test = datasets.FashionMNIST(
+            data_dir,
+            train=False,
+            download=True,
+            transform=transform,
+        )
+        image_channels = 1
+        class_names = tuple(train.classes)
     elif normalized_name == "cifar10":
         train = datasets.CIFAR10(data_dir, train=True, download=True, transform=transform)
         test = datasets.CIFAR10(data_dir, train=False, download=True, transform=transform)
@@ -98,7 +180,15 @@ def load_dataset(
             f"Unsupported dataset '{dataset_name}'. Use one of: {', '.join(SUPPORTED_DATASETS)}."
         )
 
-    train_subset = _subset(train, train_limit, seed)
+    if normalized_name == "mnist100":
+        train_subset = _balanced_subset(
+            train,
+            samples_per_class=100,
+            seed=seed,
+        )
+    else:
+        train_subset = _subset(train, train_limit, seed)
+
     test_subset = _subset(test, test_limit, seed + 1)
     x_train, y_train = _stack_subset(train_subset)
     x_test, y_test = _stack_subset(test_subset)

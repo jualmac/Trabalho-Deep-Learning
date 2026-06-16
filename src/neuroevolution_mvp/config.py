@@ -9,25 +9,37 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT_DIR = PROJECT_ROOT / "src" / "artifacts"
 DEFAULT_NEAT_CONFIG = PROJECT_ROOT / "src" / "configs" / "neat_mnist_features_full.ini"
+
+# ALL_NEAT_VARIANT_CONFIGS = (
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_features_full.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_seeded_prototypes_full.ini",
+#     PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_prototypes_cppn.ini",
+#     PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_features_cppn.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_prototypes_full.ini",
+#     PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_cppn.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_fs.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_dense.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_full.ini",
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_hidden.ini",
+# )
+
+
+# DEFAULT_NEAT_VARIANT_CONFIGS = (
+#     DEFAULT_NEAT_CONFIG,
+#     PROJECT_ROOT / "src" / "configs" / "neat_mnist_seeded_prototypes_full.ini",
+#     PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_prototypes_cppn.ini",
+# )
+
 ALL_NEAT_VARIANT_CONFIGS = (
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_features_full.ini",
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_seeded_prototypes_full.ini",
-    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_prototypes_cppn.ini",
-    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_features_cppn.ini",
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_prototypes_full.ini",
-    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_cppn.ini",
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14.ini",
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_fs.ini",
+    PROJECT_ROOT / "src" / "configs"  / "neat_mnist_14x14.ini",
+    PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_sparse.ini",
     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_dense.ini",
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_full.ini",
     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_hidden.ini",
-)
-DEFAULT_NEAT_VARIANT_CONFIGS = (
-    DEFAULT_NEAT_CONFIG,
-    PROJECT_ROOT / "src" / "configs" / "neat_mnist_seeded_prototypes_full.ini",
-    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_prototypes_cppn.ini",
+    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_cppn.ini",
 )
 
+DEFAULT_NEAT_VARIANT_CONFIGS = ALL_NEAT_VARIANT_CONFIGS
 
 @dataclass(frozen=True)
 class ExperimentConfig:

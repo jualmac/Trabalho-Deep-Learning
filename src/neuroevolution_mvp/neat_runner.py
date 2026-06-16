@@ -52,13 +52,68 @@ def evolve_genome(
     x_eval = x_train[eval_indices].numpy()
     y_eval = y_train[eval_indices].numpy()
 
-    def evaluate_population(genomes: list[tuple[int, neat.DefaultGenome]], neat_config: neat.Config) -> None:
+    def evaluate_population(genomes, neat_config):
         for _, genome in genomes:
-            genome.fitness = _fitness_genome(genome, neat_config, x_eval, y_eval)
+            genome.fitness = _fitness_genome(
+                genome,
+                neat_config,
+                x_eval,
+                y_eval,
+            )
 
     winner = population.run(evaluate_population, generations)
     return winner, reporter.history
 
+def evolve_hyperneat_genome(
+    config: neat.Config,
+    x_train: torch.Tensor,
+    y_train: torch.Tensor,
+    generations: int,
+    eval_limit: int,
+    image_size: int,
+) -> tuple[neat.DefaultGenome, list[dict[str, float]]]:
+    """Evolve a CPPN genome used to generate HyperNEAT substrate weights."""
+
+    population = neat.Population(config)
+
+    reporter = _HistoryReporter()
+    population.add_reporter(reporter)
+    population.add_reporter(neat.StdOutReporter(show_species_detail=False))
+
+    eval_indices = _balanced_indices(y_train, eval_limit)
+    x_eval = x_train[eval_indices].numpy()
+    y_eval = y_train[eval_indices].numpy()
+
+    def evaluate_population(genomes, neat_config):
+        for _, genome in genomes:
+            genome.fitness = _fitness_hyperneat_genome(
+                genome=genome,
+                neat_config=neat_config,
+                x_eval=x_eval,
+                y_eval=y_eval,
+                image_size=image_size,
+            )
+
+    winner = population.run(evaluate_population, generations)
+    return winner, reporter.history
+
+def _fitness_hyperneat_genome(
+    genome: neat.DefaultGenome,
+    neat_config: neat.Config,
+    x_eval: np.ndarray,
+    y_eval: np.ndarray,
+    image_size: int,
+) -> float:
+    weight_matrix, bias = build_hyperneat_substrate(
+        genome=genome,
+        config=neat_config,
+        image_size=image_size,
+    )
+
+    logits = x_eval @ weight_matrix.T + bias
+    predictions = np.argmax(logits, axis=1)
+
+    return float(np.mean(predictions == y_eval))
 
 def evolve_best_variant(
     config_paths: tuple[Path, ...],
@@ -97,6 +152,14 @@ def evolve_best_variant(
         best["history"],
         [row["result"] for row in variants],
     )
+
+def _variant_family(config_path: Path) -> str:
+    variant_name = config_path.stem.lower()
+
+    if "hyperneat" in variant_name:
+        return "hyperneat"
+
+    return "direct"
 
 
 def evolve_variants(
@@ -395,21 +458,27 @@ def evaluate_hyperneat_prototype_winner(
 
 
 def evaluate_hyperneat_winner(
-    genome: neat.DefaultGenome,
+    winner: neat.DefaultGenome,
     config: neat.Config,
     x_test: torch.Tensor,
     y_test: torch.Tensor,
     limit: int,
     image_size: int,
 ) -> float:
-    """Evaluate a HyperNEAT-style CPPN winner without SGD retraining."""
+    if limit > 0:
+        x_eval = x_test[:limit].numpy()
+        y_eval = y_test[:limit].numpy()
+    else:
+        x_eval = x_test.numpy()
+        y_eval = y_test.numpy()
 
-    eval_indices = _balanced_indices(y_test, limit)
-    weight_matrix, bias = build_hyperneat_substrate(genome, config, image_size)
-    logits = x_test[eval_indices].numpy() @ weight_matrix.T + bias
-    predictions = np.argmax(logits, axis=1)
-    labels = y_test[eval_indices].numpy()
-    return float(np.mean(predictions == labels)) if len(labels) else 0.0
+    return _fitness_hyperneat_genome(
+        genome=winner,
+        neat_config=config,
+        x_eval=x_eval,
+        y_eval=y_eval,
+        image_size=image_size,
+    )
 
 
 def build_hyperneat_substrate(
@@ -607,18 +676,26 @@ def _pixel_coordinates(image_size: int) -> list[tuple[float, float]]:
 
 
 def _variant_family(config_path: Path) -> str:
-    if "hyperneat_mnist_prototypes" in config_path.stem:
+    variant_name = config_path.stem.lower()
+
+    if "hyperneat_prototypes" in variant_name:
         return "hyperneat_prototypes"
-    if "hyperneat_mnist_features" in config_path.stem:
+
+    if "hyperneat_features" in variant_name:
         return "hyperneat_features"
-    if "hyperneat" in config_path.stem:
+
+    if "hyperneat" in variant_name:
         return "hyperneat"
-    if "seeded_prototypes" in config_path.stem:
+
+    if "seeded_prototypes" in variant_name:
         return "seeded_prototypes"
-    if "prototypes" in config_path.stem:
+
+    if "prototypes" in variant_name:
         return "prototypes"
-    if "features" in config_path.stem:
+
+    if "features" in variant_name:
         return "features"
+
     return "direct"
 
 
