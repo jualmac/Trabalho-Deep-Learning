@@ -177,16 +177,30 @@ class GeneratedSubstrateMLP(nn.Module):
         weight_matrix: torch.Tensor,
         bias: torch.Tensor,
         trainable: bool = True,
+        reset_weights: bool = False,
+        preserve_connection_mask: bool = False,
     ):
         super().__init__()
-        self.weight = nn.Parameter(weight_matrix.clone().float())
-        self.bias = nn.Parameter(bias.clone().float())
+        initial_weight = weight_matrix.clone().float()
+        connection_mask = (
+            initial_weight.ne(0).float()
+            if preserve_connection_mask
+            else torch.ones_like(initial_weight)
+        )
+        initial_bias = bias.clone().float()
+        if reset_weights:
+            nn.init.xavier_uniform_(initial_weight)
+            initial_weight.mul_(connection_mask)
+            initial_bias.zero_()
+        self.weight = nn.Parameter(initial_weight)
+        self.bias = nn.Parameter(initial_bias)
+        self.register_buffer("connection_mask", connection_mask)
         if not trainable:
             for parameter in self.parameters():
                 parameter.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x @ self.weight.t() + self.bias
+        return x @ (self.weight * self.connection_mask).t() + self.bias
 
 
 class FeatureWrappedModel(nn.Module):

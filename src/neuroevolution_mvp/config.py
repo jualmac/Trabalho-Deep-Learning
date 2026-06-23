@@ -37,10 +37,12 @@ class ExperimentConfig:
     dataset: str = "mnist"
     image_size: int = 26
     train_limit: int = 5_000
-    test_limit: int = 1_000
+    test_limit: int = 10_000
     neat_eval_limit: int = 2_000
     neat_generations: int = 35
-    neat_winner_eval_limit: int = 1_000
+    neat_winner_eval_limit: int = 10_000
+    interpretability_samples: int = 0
+    interpretability_grid_size: int = 8
     baseline_epochs: int = 15
     evolved_sgd_epochs: int = 25
     batch_size: int = 64

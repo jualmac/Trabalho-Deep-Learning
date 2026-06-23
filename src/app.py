@@ -93,7 +93,7 @@ def _sidebar_config() -> ExperimentConfig:
     generations = st.sidebar.slider("Geracoes NEAT", 1, 80, defaults.neat_generations)
     epochs = st.sidebar.slider("Epocas SGD", 1, 50, defaults.baseline_epochs)
     train_limit = st.sidebar.slider("Amostras de treino", 200, 10_000, defaults.train_limit, step=100)
-    test_limit = st.sidebar.slider("Amostras de teste", 100, 2_000, defaults.test_limit, step=100)
+    test_limit = st.sidebar.slider("Amostras de teste", 100, 10_000, defaults.test_limit, step=100)
     neat_eval_limit = st.sidebar.slider(
         "Amostras por avaliacao NEAT",
         100,
@@ -126,6 +126,10 @@ def _load_or_run_results(config: ExperimentConfig) -> dict | None:
         if (
             int(results["config"].get("image_size", 0)) != config.image_size
             or str(results["config"].get("dataset", "mnist")) != config.dataset
+            or results.get("summary", {}).get("sgd_weight_initialization")
+            != "random_reset_preserving_neat_topology"
+            or results.get("interpretation_summary", {}).get("attribution_method")
+            != "occlusion_absolute_predicted_logit_change_v2"
         ):
             st.sidebar.warning("Artefatos antigos detectados. Rode um novo experimento.")
             return None
@@ -145,16 +149,35 @@ def _show_overview(results: dict) -> None:
         return
 
     cols = st.columns(4)
-    cols[0].metric("NEAT puro vs NEAT+SGD", f"{interpretation['neat_pure_vs_neat_sgd_cosine']:.2f}")
-    cols[1].metric("Pixels-chave comuns", f"{interpretation['neat_pure_vs_neat_sgd_top_overlap']:.1%}")
-    cols[2].metric("Diferenca media", f"{interpretation['neat_pure_vs_neat_sgd_difference']:.2f}")
-    cols[3].metric("Predicoes iguais", f"{interpretation['neat_pure_vs_neat_sgd_prediction_agreement']:.1%}")
+    primary = interpretation.get("primary_metric", {})
+    pair = interpretation.get("pairwise_conditioned", {}).get(
+        "neat_pure_vs_neat_sgd", {}
+    )
+    cols[0].metric(
+        "Divergencia de atencao",
+        _format_optional_metric(primary.get("value")),
+        help="1 - Jaccard ponderado medio em todo o conjunto de teste.",
+    )
+    cols[1].metric(
+        "Divergencia, mesma classe",
+        _format_optional_metric(pair.get("dataset_attention_divergence_same_prediction")),
+        help="Controla comparacoes em que os dois heatmaps explicam a mesma classe prevista.",
+    )
+    cols[2].metric(
+        "Cobertura valida",
+        _format_optional_percent(pair.get("valid_map_coverage")),
+    )
+    cols[3].metric(
+        "Predicoes iguais",
+        f"{interpretation['neat_pure_vs_neat_sgd_prediction_agreement']:.1%}",
+    )
 
     st.markdown(
         f"""
         <div class="insight">
             <strong>Leitura da demo:</strong>
-            estes numeros foram calculados em {int(interpretation['probe_samples'])} imagens.
+            estes numeros foram calculados em {int(interpretation['probe_samples'])} imagens
+            ({interpretation.get('evaluation_scope', 'escopo desconhecido')}).
             A comparacao principal usa a mesma arquitetura evoluida. O que muda
             e o otimizador dos pesos: NEAT no modelo puro, SGD no modelo
             retreinado. Similaridade baixa sugere que trocar o otimizador de
@@ -164,6 +187,42 @@ def _show_overview(results: dict) -> None:
         unsafe_allow_html=True,
     )
 
+    conditioned = interpretation.get("pairwise_conditioned", {}).get(
+        "neat_pure_vs_neat_sgd"
+    )
+    if conditioned:
+        correct = conditioned["both_correct"]
+        wrong = conditioned["both_wrong"]
+        controlled_gap = conditioned["controlled_attention_gap_weighted_jaccard"]
+        gap = (
+            controlled_gap
+            if controlled_gap is not None
+            else conditioned["attention_agreement_gap_weighted_jaccard"]
+        )
+        conditioned_cols = st.columns(4)
+        conditioned_cols[0].metric(
+            "Jaccard: ambos acertam",
+            _format_optional_metric(correct["weighted_jaccard"]["mean"]),
+            help=f"n={correct['sample_count']} amostras; mapas validos={correct['valid_map_pairs']}",
+        )
+        conditioned_cols[1].metric(
+            "Jaccard: ambos erram",
+            _format_optional_metric(wrong["weighted_jaccard"]["mean"]),
+            help=f"n={wrong['sample_count']} amostras; mapas validos={wrong['valid_map_pairs']}",
+        )
+        conditioned_cols[2].metric(
+            "Gap acerto - erro controlado",
+            _format_optional_metric(gap, signed=True),
+            help=(
+                "Compara acertos conjuntos com erros na mesma classe prevista. "
+                "Quando esse grupo nao existe, usa todos os erros conjuntos."
+            ),
+        )
+        conditioned_cols[3].metric(
+            "Erros com classes diferentes",
+            _format_optional_percent(conditioned["wrong_prediction_disagreement"]),
+        )
+
     st.subheader("Controles de sanidade")
     control_cols = st.columns(4)
     control_cols[0].metric("Baseline SGD", f"{summary['baseline_sgd_accuracy']:.1%}")
@@ -171,6 +230,16 @@ def _show_overview(results: dict) -> None:
     control_cols[2].metric("NEAT + SGD", f"{summary['evolved_topology_sgd_accuracy']:.1%}")
     control_cols[3].metric("Conexoes NEAT", int(summary["evolved_enabled_connections"]))
     st.caption("Acuracia ajuda a checar se ha sinal de aprendizagem, mas nao decide a pergunta do trabalho.")
+
+
+def _format_optional_metric(value: float | None, signed: bool = False) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:+.3f}" if signed else f"{value:.3f}"
+
+
+def _format_optional_percent(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.1%}"
 
 
 def _show_examples(config: ExperimentConfig) -> None:
@@ -235,7 +304,7 @@ def _show_examples(config: ExperimentConfig) -> None:
     fig_cols = st.columns(5)
     fig_cols[0].pyplot(_heatmap_figure(image, "Imagem original", "Greys"), use_container_width=True)
     fig_cols[0].markdown(_prediction_badge("Rotulo", label, None), unsafe_allow_html=True)
-    fig_cols[1].pyplot(_heatmap_figure(baseline_map, "Olhar: baseline SGD", "Greens"), use_container_width=True)
+    fig_cols[1].pyplot(_heatmap_figure(baseline_map, "Sensibilidade: baseline SGD", "Greens"), use_container_width=True)
     fig_cols[1].markdown(
         _prediction_badge(
             "Predicao",
@@ -244,7 +313,7 @@ def _show_examples(config: ExperimentConfig) -> None:
         ),
         unsafe_allow_html=True,
     )
-    fig_cols[2].pyplot(_heatmap_figure(neat_map, "Olhar: NEAT puro", "YlGn"), use_container_width=True)
+    fig_cols[2].pyplot(_heatmap_figure(neat_map, "Sensibilidade: NEAT puro", "YlGn"), use_container_width=True)
     fig_cols[2].markdown(
         _prediction_badge(
             "Predicao",
@@ -253,7 +322,7 @@ def _show_examples(config: ExperimentConfig) -> None:
         ),
         unsafe_allow_html=True,
     )
-    fig_cols[3].pyplot(_heatmap_figure(evolved_map, "Olhar: NEAT + SGD", "Greens"), use_container_width=True)
+    fig_cols[3].pyplot(_heatmap_figure(evolved_map, "Sensibilidade: NEAT + SGD", "Greens"), use_container_width=True)
     fig_cols[3].markdown(
         _prediction_badge(
             "Predicao",

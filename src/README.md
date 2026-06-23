@@ -206,7 +206,7 @@ No codigo, o SGD usa:
 - `nesterov = True`: calcula uma correcao olhando um passo "a frente" na direcao
   do momentum.
 
-Intuicao para explicar em apresentacao: o SGD e como descer uma montanha olhando
+Como intuicao, o SGD e como descer uma montanha olhando
 a inclinacao local. O momentum evita que cada mini-lote mude a direcao de forma
 muito brusca.
 
@@ -215,12 +215,35 @@ Adam, RMSProp e outros otimizadores. O objetivo e separar duas fontes de
 aprendizado:
 
 - `NEAT puro`: arquitetura e pesos vieram da evolucao;
-- `NEAT + SGD`: a arquitetura veio da evolucao, mas os pesos foram ajustados por
-  gradiente.
+- `NEAT + SGD`: somente a arquitetura veio da evolucao; antes do SGD, os pesos
+  evoluidos sao descartados e reinicializados aleatoriamente.
 
 Assim, quando comparamos `NEAT puro` contra `NEAT + SGD`, a pergunta fica clara:
 a topologia encontrada pelo NEAT continua util quando os pesos sao retreinados
 por um metodo classico?
+
+### Protocolo de reinicializacao dos pesos
+
+O ramo `NEAT + SGD` nao inicia com os pesos vencedores do NEAT. Isso seria
+fine-tuning e daria ao SGD uma vantagem inicial dificil de separar do efeito da
+topologia. O protocolo implementado e:
+
+1. o `NEAT puro` mantem arquitetura, pesos e vieses evoluidos;
+2. copia-se apenas a topologia vencedora para o ramo `NEAT + SGD`;
+3. os pesos das conexoes ativas sao reinicializados aleatoriamente;
+4. os vieses sao zerados;
+5. o SGD treina essa rede desde o inicio.
+
+Nas variantes NEAT diretas, preservam-se os nos e as conexoes habilitadas pelo
+genoma. Nas variantes HyperNEAT-like, preserva-se a mascara de conexoes expressas
+pela CPPN: pesos ativos recebem inicializacao Xavier e conexoes inativas ficam
+mascaradas durante todo o SGD. O baseline tambem nasce com pesos aleatorios, mas
+sua arquitetura e uma CNN definida manualmente, nao a topologia do NEAT.
+
+Assim, `NEAT puro vs NEAT + SGD` compara dois metodos de obtencao dos pesos sobre
+a mesma estrutura. Artefatos produzidos antes desse protocolo devem ser gerados
+novamente; em `results.json`, o campo `sgd_weight_initialization` deve ser
+`random_reset_preserving_neat_topology`.
 
 ### NEAT puro
 
@@ -253,8 +276,8 @@ penalizacao inspirada em perda logaritmica. Isso e importante porque, em
 classificacao, duas redes podem ter a mesma acuracia, mas uma estar muito mais
 confiante e separando melhor as classes.
 
-Resposta curta para a plateia: o NEAT nao faz backpropagation. Ele testa muitas
-redes, da nota para elas e evolui as melhores.
+Em resumo, o NEAT nao faz backpropagation: ele testa muitas redes, atribui
+fitness e evolui as melhores.
 
 ### NEAT com features compactas
 
@@ -317,7 +340,9 @@ forma simplificada:
 - a CPPN e evoluida pelo NEAT;
 - ela recebe coordenadas abstratas dos atributos e das classes;
 - ela gera uma matriz de pesos para o classificador final;
-- essa matriz pode ser usada pura ou depois retreinada por SGD.
+- no modelo puro, usam-se os pesos gerados;
+- no ramo SGD, preserva-se apenas a mascara de conexoes nao nulas e os pesos
+  ativos sao reinicializados antes do treino.
 
 Por que isso pode ser interessante? Porque a CPPN pode gerar padroes regulares
 com poucas conexoes. Por isso, as tabelas podem mostrar HyperNEAT com menos
@@ -325,8 +350,8 @@ conexoes diretas do que outra variante. Nesse caso, as conexoes contadas sao as
 da CPPN evoluida, nao necessariamente todas as relacoes efetivas que ela gera no
 substrato final.
 
-Resposta curta para a plateia: NEAT evolui a rede diretamente; HyperNEAT evolui
-uma rede que gera outra rede.
+Em resumo, NEAT evolui a rede diretamente; HyperNEAT evolui uma rede que gera
+outra rede.
 
 ### Como o modelo final e escolhido
 
@@ -350,21 +375,33 @@ mesma estrutura interna. Por isso foi escolhido um metodo externo ao modelo.
 
 ### Mapa de oclusao
 
-O principal metodo implementado e o mapa de oclusao.
+O principal metodo implementado e o mapa de oclusao, inspirado na analise de
+sensibilidade por oclusao de Zeiler e Fergus (2014). O metodo perturba regioes da
+entrada e mede a mudanca na saida do classificador, sem depender da arquitetura
+interna ou de gradientes.
 
 Passo a passo:
 
 1. o modelo recebe a imagem original;
-2. registramos a classe prevista e a confianca nessa classe;
+2. registramos a classe prevista e seu logit antes do softmax;
 3. escolhemos um pixel da imagem;
 4. ocultamos esse pixel, colocando seu valor como zero;
 5. rodamos a predicao de novo;
-6. medimos quanto a confianca na classe original caiu;
+6. medimos o valor absoluto da variacao do logit da classe original;
 7. repetimos isso para todos os pixels.
 
-Se esconder um pixel derruba muito a confianca, esse pixel recebe alta
-importancia. Se esconder o pixel quase nao muda a predicao, ele recebe baixa
-importancia.
+Se esconder uma regiao altera muito o logit, ela recebe alta sensibilidade. Se a
+oclusao quase nao muda o logit, ela recebe baixa sensibilidade. Usa-se valor
+absoluto porque o objetivo e medir influencia local; tanto uma queda quanto um
+aumento forte mostram que a regiao afeta a decisao.
+
+O logit e usado no lugar da probabilidade softmax para evitar saturacao. Quando
+o modelo apresenta probabilidade arredondada para `100%`, mudancas relevantes no
+logit podem produzir variacoes numericamente quase nulas na probabilidade. A
+implementacao anterior tambem descartava aumentos com `clamp(min=0)`, o que
+podia gerar um heatmap visualmente vazio mesmo quando o modelo era sensivel a
+oclusao. O mapa atual deve ser chamado de mapa de sensibilidade por oclusao, nao
+de mapa de evidencia exclusivamente positiva.
 
 No MNIST, cada pixel tem um canal. No CIFAR-10, cada posicao tem tres canais
 RGB. Nesse caso, a oclusao zera os tres canais daquele mesmo ponto espacial,
@@ -381,12 +418,14 @@ Limites:
 
 - e mais lento que metodos por gradiente;
 - mede sensibilidade local, nao uma explicacao causal completa;
+- depende da escolha da perturbacao; zerar pixels pode criar entradas fora da
+  distribuicao natural, uma limitacao conhecida dos metodos de perturbacao;
 - pode destacar regioes que afetam a confianca, mas nao necessariamente sao as
   regioes que um humano usaria;
 - se o modelo for ruim, o mapa explica uma decisao ruim.
 
-Resposta curta para a plateia: o mapa mostra onde a predicao mais sofre quando a
-gente apaga partes da imagem.
+Em termos operacionais, o mapa mostra onde a saida do modelo mais muda quando
+regioes da imagem sao ocultadas.
 
 ### Comparacao entre mapas
 
@@ -401,7 +440,12 @@ As metricas calculadas sao:
 - `cosine_similarity`: mede se dois mapas apontam para regioes parecidas. Quanto
   mais perto de `1`, mais parecidos;
 - `top_pixel_overlap`: mede a sobreposicao entre os pixels mais importantes de
-  dois mapas;
+  dois mapas. Como os dois conjuntos tem o mesmo tamanho, o valor e a fracao de
+  pixels-chave compartilhados;
+- `top_pixel_iou`: divide a intersecao dos pixels-chave pela uniao. E uma versao
+  mais conservadora da sobreposicao;
+- `weighted_jaccard`: compara toda a massa dos mapas pela soma dos minimos
+  dividida pela soma dos maximos. Nao depende de escolher apenas os top pixels;
 - `mean_absolute_difference`: mede a diferenca media entre os mapas. Quanto
   menor, mais parecidos;
 - `prediction_agreement`: mede se `NEAT puro` e `NEAT + SGD` deram a mesma
@@ -415,6 +459,169 @@ Como interpretar:
   resposta olhando para evidencias diferentes;
 - mapas parecidos com baixa acuracia nao significam bom modelo, apenas
   consistencia entre explicacoes.
+
+### Metrica global do conjunto de teste
+
+A metrica primaria do estudo e a `Dataset Attention Divergence` (`DAD`), uma
+metrica operacional definida neste projeto a partir do Jaccard ponderado; o nome
+nao representa um indice padronizado da literatura. A similaridade usada em
+cada imagem e a mesma forma do `min-max kernel` para vetores nao negativos
+formalizada por Li (2015), tambem relacionada ao Jaccard ponderado. Para
+cada imagem `i`, calculamos o Jaccard ponderado entre o mapa do `NEAT puro` e o
+mapa do `NEAT + SGD`:
+
+```text
+J_i = soma_p min(A_i,p, B_i,p) / soma_p max(A_i,p, B_i,p)
+```
+
+em que `p` percorre as posicoes espaciais, `A` e o mapa do NEAT puro e `B` e o
+mapa da mesma imagem no NEAT + SGD. Em seguida:
+
+```text
+Dataset Attention Agreement  = media_i(J_i)
+Dataset Attention Divergence = 1 - media_i(J_i)
+```
+
+Portanto, a parte estabelecida na literatura e a similaridade min-max entre dois
+vetores nao negativos. A contribuicao metodologica deste experimento e aplicar
+essa similaridade a pares de mapas normalizados da mesma imagem, tirar a media
+no conjunto de teste e usar seu complemento como divergencia. A DAD deve ser
+descrita no artigo como uma metrica proposta/operacional, nao como um benchmark
+XAI previamente validado.
+
+A divergencia varia de `0` a `1`:
+
+- `0`: os dois otimizadores produziram padroes espaciais iguais nas imagens;
+- valores maiores: maior diferenca media entre as regioes priorizadas;
+- `1`: ausencia de massa de atencao compartilhada.
+
+Essa e uma media de comparacoes pareadas: os dois modelos sao comparados na
+mesma imagem antes da agregacao. Nao se calcula primeiro um heatmap medio do
+dataset, pois objetos aparecem em posicoes diferentes e poderiam se cancelar.
+
+O resultado inclui:
+
+- `dataset_attention_divergence`: media do Jaccard ponderado por imagem, dando o
+  mesmo peso a cada imagem valida;
+- `dataset_attention_divergence_macro`: calcula a concordancia media dentro de
+  cada classe e depois tira a media das classes;
+- `dataset_attention_divergence_same_prediction`: considera apenas imagens em
+  que os dois modelos previram a mesma classe, controlando a classe-alvo que o
+  heatmap explica;
+- `dataset_attention_divergence_ci95`: intervalo bootstrap de 95%, com 2.000
+  reamostragens, seguindo a motivacao de reamostragem nao parametrica de Efron
+  (1979);
+- `valid_map_coverage`: fracao das imagens em que ambos os mapas possuem sinal
+  positivo de oclusao.
+
+Por padrao, a metrica usa todo o conjunto de teste carregado pelo experimento.
+Com `test_limit=10000`, isso corresponde ao conjunto oficial de teste completo
+do MNIST ou CIFAR-10. Para uma execucao exploratoria mais curta:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli --test-limit 1000 --interpretability-samples 200
+```
+
+`--interpretability-samples 0` significa usar todas as imagens carregadas. Se o
+valor for maior que zero, o codigo usa um subconjunto em rodizio balanceado por
+classe e registra `evaluation_scope=class_balanced_subset`.
+
+Para viabilizar a avaliacao completa, a metrica global usa oclusao regional em
+uma grade `8x8`. Cada celula e ocultada e sua importancia e atribuida a regiao.
+Isso e mais estavel para imagens naturais e reduz o custo para cerca de 64
+perturbacoes por imagem. Os exemplos do PDF continuam usando oclusao por pixel
+para maior detalhamento visual.
+
+A DAD global e uma medida de divergencia comportamental: quando os modelos
+preveem classes diferentes, os mapas tambem explicam alvos diferentes. Por isso,
+a DAD restrita a `same_prediction` deve ser apresentada junto da global como
+controle. A global responde "quanto o comportamento visual total difere?"; a
+restrita responde "quanto as regioes diferem quando a decisao de classe e a
+mesma?".
+
+### Metricas condicionadas a acerto e erro
+
+Para formalizar frases como "quando acertam, olham para os mesmos lugares; quando
+erram, erram de forma diferente", o experimento nao calcula apenas uma media
+global. Para cada par de modelos, as amostras sao separadas em:
+
+- `both_correct`: os dois modelos acertaram o rotulo;
+- `both_wrong`: os dois modelos erraram;
+- `both_wrong_same_prediction`: os dois erraram e escolheram a mesma classe
+  incorreta;
+- `both_wrong_different_prediction`: os dois erraram, mas escolheram classes
+  incorretas diferentes;
+- `one_correct`: apenas um modelo acertou;
+- `all`: todo o conjunto avaliado pela metrica global.
+
+O par principal e `NEAT puro vs NEAT + SGD`, porque os dois usam a mesma
+arquitetura evoluida. Assim, a diferenca principal esta nos pesos: evoluidos no
+primeiro e retreinados por gradiente no segundo. Comparar `Baseline vs NEAT`
+continua sendo util, mas mistura dois fatores, arquitetura e metodo de treino;
+portanto, nao deve ser apresentado como efeito isolado do otimizador.
+
+A metrica-resumo principal e:
+
+```text
+gap de concordancia = Jaccard ponderado medio em both_correct
+                    - Jaccard ponderado medio em both_wrong
+```
+
+Leitura:
+
+- `gap > 0`: os modelos concordam mais sobre onde olhar quando ambos acertam;
+- `gap perto de 0`: nao ha diferenca clara entre acertos e erros;
+- `gap < 0`: os mapas foram mais parecidos nos erros conjuntos.
+
+O experimento tambem calcula `wrong_prediction_disagreement`: entre os casos em
+que ambos erraram, qual fracao recebeu classes erradas diferentes. Essa metrica
+mede diferenca de decisao; o gap mede diferenca espacial dos mapas. As duas nao
+devem ser confundidas.
+
+Existe ainda um `controlled_attention_gap`, que compara os acertos conjuntos
+apenas com erros em que os dois modelos previram a mesma classe incorreta. Esse
+e o contraste espacial mais rigoroso, porque em ambos os grupos os dois mapas da
+mesma amostra explicam a mesma classe-alvo. Quando os modelos erram classes
+diferentes, cada mapa explica uma saida diferente; nesse caso, menor concordancia
+pode ser consequencia da classe escolhida, nao apenas do otimizador.
+
+Cada media condicionada inclui:
+
+- numero total de amostras do grupo;
+- numero de pares de mapas validos;
+- media;
+- intervalo de confianca aproximado de 95% para a media.
+
+O gap tambem recebe um intervalo de confianca bootstrap de 95%, com 2.000
+reamostragens das imagens. Se esse intervalo incluir zero, os dados daquela
+execucao nao sustentam uma diferenca clara entre acertos e erros.
+
+Se um grupo tiver poucas imagens, a conclusao condicionada deve ser tratada como
+exploratoria. Mapas sem sinal positivo de oclusao sao contados na cobertura, mas
+excluidos das medias de
+similaridade, evitando que pixels escolhidos arbitrariamente por empate sejam
+interpretados como concordancia real.
+
+As metricas top-k usam no maximo 15% dos pixels, mas nao completam o conjunto
+com pixels de importancia zero. Isso evita sobreposicao artificial causada por
+empates entre pixels sem sinal. O `weighted_jaccard` e a metrica primaria porque
+usa o mapa inteiro e reduz a dependencia desse limiar.
+
+Importante: cada mapa e normalizado pelo seu proprio valor maximo. Portanto, as
+metricas comparam o padrao espacial relativo, nao a intensidade absoluta da
+variacao do logit. A conclusao correta e "os modelos apresentam sensibilidade
+espacial parecida", e nao "os pixels tiveram exatamente o mesmo efeito numerico".
+
+Esses intervalos medem variacao entre imagens para um par de modelos ja
+treinado. Eles nao medem a aleatoriedade do treinamento do SGD e da evolucao.
+Para afirmar algo sobre os metodos, e nao apenas sobre uma execucao, repita o
+experimento com varias sementes e reporte media e dispersao entre execucoes:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli --seed 1 --artifact-dir src/artifacts/mnist_seed_1
+PYTHONPATH=src python -m neuroevolution_mvp.cli --seed 2 --artifact-dir src/artifacts/mnist_seed_2
+PYTHONPATH=src python -m neuroevolution_mvp.cli --seed 3 --artifact-dir src/artifacts/mnist_seed_3
+```
 
 ### PDF de validacao visual
 
@@ -432,7 +639,119 @@ os mapas fazem sentido visualmente. Por exemplo, no MNIST, espera-se que regioes
 do traco do digito sejam relevantes. No CIFAR-10, espera-se que regioes do objeto
 tenham mais destaque do que fundo aleatorio.
 
-## Perguntas provaveis da plateia
+## Como reexecutar para produzir resultados do artigo
+
+Artefatos antigos devem ser descartados da analise porque foram gerados antes do
+reset independente dos pesos e antes da correcao de saturacao dos heatmaps. Use
+diretorios novos por dataset e semente.
+
+Para confirmar que um resultado segue o protocolo atual, verifique em
+`results.json`:
+
+```text
+summary.sgd_weight_initialization = random_reset_preserving_neat_topology
+interpretation_summary.attribution_method = occlusion_absolute_predicted_logit_change_v2
+interpretation_summary.dataset_metric = dad_weighted_jaccard_v1
+```
+
+Execucao completa para MNIST, com todas as 10.000 imagens de teste na DAD e 30
+exemplos visuais no PDF:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli \
+  --dataset mnist \
+  --seed 42 \
+  --test-limit 10000 \
+  --interpretability-samples 0 \
+  --pdf-samples 30 \
+  --artifact-dir src/artifacts/article_mnist_seed42
+```
+
+Para CIFAR-10:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli \
+  --dataset cifar10 \
+  --seed 42 \
+  --test-limit 10000 \
+  --interpretability-samples 0 \
+  --pdf-samples 30 \
+  --artifact-dir src/artifacts/article_cifar10_seed42
+```
+
+Como NEAT e SGD sao estocasticos, o protocolo recomendado e repetir pelo menos
+cinco sementes. Exemplo para MNIST:
+
+```bash
+for seed in 1 2 3 4 5; do
+  PYTHONPATH=src python -m neuroevolution_mvp.cli \
+    --dataset mnist \
+    --seed "$seed" \
+    --test-limit 10000 \
+    --interpretability-samples 0 \
+    --pdf-samples 20 \
+    --artifact-dir "src/artifacts/article_mnist_seed${seed}"
+done
+```
+
+Cada diretorio contem:
+
+- `results.json`: metricas completas, intervalos, tamanhos dos grupos,
+  acuracias e protocolo de inicializacao;
+- `<dataset>_interpretability_validation.pdf`: exemplos qualitativos;
+- `<dataset>_interpretability_summary.csv`: uma linha plana pronta para tabela,
+  planilha ou agregacao entre sementes;
+- `<dataset>_interpretability_summary.png`: painel quantitativo pronto para uso
+  como figura no artigo;
+- pesos do baseline, NEAT + SGD, genoma vencedor e centroides quando usados.
+
+Dentro de `results.json`, use:
+
+- `article_summary`: versao plana das metricas principais;
+- `metric_definitions`: definicao, faixa e interpretacao de cada metrica;
+- `interpretation_summary`: resultados completos e todos os recortes;
+- `interpretation_summary.pairwise_conditioned.neat_pure_vs_neat_sgd`: analise
+  detalhada do par principal.
+
+O PDF comeca com capa, painel quantitativo, tabela de definicoes e depois os
+exemplos visuais. A selecao nao e apenas por classe: ela reserva casos para
+`apenas NEAT puro acerta`, `apenas NEAT + SGD acerta`, `ambos erram classes
+diferentes`, `ambos acertam` e `ambos erram a mesma classe`. Se uma categoria
+nao existir no conjunto de busca, as paginas restantes priorizam outras
+discordancias e cobertura de classes.
+
+Se o experimento ja foi executado com o protocolo atual, regenere somente os
+artefatos editoriais sem treinar novamente:
+
+```bash
+PYTHONPATH=src python -m neuroevolution_mvp.cli \
+  --dataset mnist \
+  --artifact-dir src/artifacts/article_mnist_seed42 \
+  --pdf-samples 30 \
+  --report-only
+```
+
+Esse comando enriquece o `results.json` com `article_summary` e
+`metric_definitions` e recria CSV, PNG e PDF. Ele recusa artefatos anteriores ao
+reset independente dos pesos ou aos mapas de oclusao baseados em logits.
+
+Para a tabela principal do artigo, reporte por dataset e por semente:
+
+- acuracia de `Baseline`, `NEAT puro` e `NEAT + SGD`;
+- DAD global e IC95%;
+- DAD macro por classe;
+- DAD condicionada a mesma classe prevista e seu `n`;
+- cobertura de mapas validos;
+- gap acerto-erro, gap controlado e respectivos IC95%;
+- quantidade de imagens em `both_correct`, `both_wrong` e `one_correct`.
+
+Uma conclusao formal deve seguir os intervalos. Exemplo: se a DAD for `0.31`
+com IC95% `[0.28, 0.34]`, pode-se afirmar que houve divergencia espacial media
+de `0.31` segundo a metrica proposta. Se o IC95% do gap acerto-erro incluir
+zero, nao se deve afirmar que a concordancia muda entre acertos e erros. Os PDFs
+servem como ilustracao dos resultados quantitativos, nao como evidencia isolada.
+
+## Questoes metodologicas frequentes
 
 **Por que nao usar Adam no retreino?**
 
@@ -496,15 +815,6 @@ Se a porta estiver ocupada, use outra:
 PYTHONPATH=src streamlit run src/app.py --server.port 8502
 ```
 
-## Fluxo recomendado para demonstracao
-
-1. Execute `PYTHONPATH=src python -m neuroevolution_mvp.cli` antes da apresentacao.
-2. Abra `PYTHONPATH=src streamlit run src/app.py`.
-3. Na aba `Visao geral`, mostre que a pergunta principal e interpretabilidade.
-4. Na aba `Exemplos de olhar`, clique nos botoes `0-9` para ver um exemplo de cada digito.
-5. Compare `NEAT puro` com `NEAT + SGD`: mesma arquitetura, otimizadores de peso diferentes.
-6. Na aba `Topologia NEAT`, mostre quantas conexoes/camadas a evolucao encontrou.
-
 ## Estrutura principal
 
 - `src/app.py`: interface Streamlit.
@@ -524,3 +834,35 @@ A interface tem abas para:
 - predicao e confianca abaixo de cada mapa visual;
 - visao da topologia evoluida pelo NEAT;
 - curvas e tabelas de acompanhamento.
+
+## Referencias teoricas
+
+- Stanley, K. O.; Miikkulainen, R. **Evolving Neural Networks through
+  Augmenting Topologies**. *Evolutionary Computation*, 10(2), 99-127, 2002.
+  DOI: [10.1162/106365602320169811](https://doi.org/10.1162/106365602320169811).
+  Fundamenta o NEAT, incluindo complexificacao incremental, marcadores
+  historicos e especiacao.
+- Stanley, K. O.; D'Ambrosio, D. B.; Gauci, J. **A Hypercube-Based Encoding for
+  Evolving Large-Scale Neural Networks**. *Artificial Life*, 15(2), 185-212,
+  2009. DOI: [10.1162/artl.2009.15.2.15202](https://doi.org/10.1162/artl.2009.15.2.15202).
+  Fundamenta HyperNEAT e o uso de CPPNs como codificacao indireta.
+- Zeiler, M. D.; Fergus, R. **Visualizing and Understanding Convolutional
+  Networks**. *ECCV*, 2014.
+  [Artigo](https://cs.nyu.edu/~fergus/papers/zeilerECCV2014.pdf). Fundamenta a
+  analise de sensibilidade por oclusao de regioes da entrada.
+- Li, P. **Min-Max Kernels**. 2015.
+  [arXiv:1503.01737](https://arxiv.org/abs/1503.01737). Formaliza, para vetores
+  nao negativos, a razao `soma(min)/soma(max)` usada como concordancia dos
+  heatmaps antes da agregacao DAD.
+- Efron, B. **Bootstrap Methods: Another Look at the Jackknife**. *The Annals of
+  Statistics*, 7(1), 1-26, 1979.
+  [Artigo](https://sites.stat.washington.edu/courses/stat527/s13/readings/ann_stat1979.pdf).
+  Fundamenta os intervalos de confianca por reamostragem.
+- Adebayo, J. et al. **Sanity Checks for Saliency Maps**. *NeurIPS*, 2018.
+  [Artigo](https://papers.nips.cc/paper_files/paper/2018/hash/294a8ed24b1ad22ec2e7efea049b8737-Abstract.html).
+  Motiva nao confiar apenas no apelo visual dos mapas e reportar verificacoes
+  quantitativas e controles.
+- Brunke, L.; Agrawal, P.; George, N. **Evaluating Input Perturbation Methods for
+  Interpreting CNNs and Saliency Map Comparison**. 2021.
+  [arXiv:2101.10977](https://arxiv.org/abs/2101.10977). Discute a sensibilidade
+  dos mapas de perturbacao a escolha da oclusao e de seus hiperparametros.
