@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Subset, TensorDataset
 from torchvision import datasets, transforms
 
 
-SUPPORTED_DATASETS = ("mnist", "mnist100", "fashion_mnist", "cifar10")
+SUPPORTED_DATASETS = ("mnist", "mnist100", "fashion_mnist", "cifar10", 'kmnist')
 
 
 @dataclass(frozen=True)
@@ -120,6 +120,41 @@ def _stack_subset(subset: Subset) -> tuple[torch.Tensor, torch.Tensor]:
 
     return torch.stack(images), torch.tensor(labels, dtype=torch.long)
 
+def _build_transform(dataset_name: str, image_size: int, train: bool):
+    normalized_name = dataset_name.strip().lower()
+
+    if normalized_name in {"cifar10", "cifar100_10"}:
+        normalize = transforms.Normalize(
+            mean=(0.4914, 0.4822, 0.4465),
+            std=(0.2470, 0.2435, 0.2616),
+        )
+
+        if train:
+            return transforms.Compose(
+                [
+                    transforms.Resize((image_size, image_size)),
+                    transforms.RandomCrop(image_size, padding=4),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    normalize,
+                ]
+            )
+
+        return transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+                normalize,
+            ]
+        )
+
+    return transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+        ]
+    )
+
 
 def load_dataset(
     dataset_name: str,
@@ -155,6 +190,21 @@ def load_dataset(
         test = datasets.MNIST(data_dir, train=False, download=True, transform=transform)
         image_channels = 1
         class_names = tuple(str(label) for label in range(10))
+    elif normalized_name == "kmnist":
+        train = datasets.KMNIST(
+            root=data_dir,
+            train=True,
+            download=True,
+            transform=transform,
+        )
+        test = datasets.KMNIST(
+            root=data_dir,
+            train=False,
+            download=True,
+            transform=transform,
+        )
+        image_channels = 1
+        class_names = tuple(str(label) for label in range(10))
     elif normalized_name == "fashion_mnist":
         train = datasets.FashionMNIST(
             data_dir,
@@ -171,8 +221,10 @@ def load_dataset(
         image_channels = 1
         class_names = tuple(train.classes)
     elif normalized_name == "cifar10":
-        train = datasets.CIFAR10(data_dir, train=True, download=True, transform=transform)
-        test = datasets.CIFAR10(data_dir, train=False, download=True, transform=transform)
+        train_transform = _build_transform(normalized_name, image_size, train=True)
+        test_transform = _build_transform(normalized_name, image_size, train=False)
+        train = datasets.CIFAR10(data_dir, train=True, download=True, transform=train_transform)
+        test = datasets.CIFAR10(data_dir, train=False, download=True, transform=test_transform)
         image_channels = 3
         class_names = tuple(train.classes)
     else:

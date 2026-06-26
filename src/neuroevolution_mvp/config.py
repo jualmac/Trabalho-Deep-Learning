@@ -36,7 +36,13 @@ ALL_NEAT_VARIANT_CONFIGS = (
     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_sparse.ini",
     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_dense.ini",
     PROJECT_ROOT / "src" / "configs" / "neat_mnist_14x14_hidden.ini",
+    PROJECT_ROOT / "src" / "configs" / "neat_mnist_features_full.ini",
+    PROJECT_ROOT / "src" / "configs" / "neat_mnist_prototypes_full.ini",
+    PROJECT_ROOT / "src" / "configs" / "neat_mnist_seeded_prototypes_full.ini",
     PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_cppn.ini",
+    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_features_cppn.ini",
+    PROJECT_ROOT / "src" / "configs" / "hyperneat_mnist_prototypes_cppn.ini",
+    PROJECT_ROOT / "src" / "configs" / "neat_cifar_cnn_embedding.ini",
 )
 
 DEFAULT_NEAT_VARIANT_CONFIGS = ALL_NEAT_VARIANT_CONFIGS
@@ -62,6 +68,7 @@ class ExperimentConfig:
     artifact_dir: Path = DEFAULT_ARTIFACT_DIR
     neat_config_path: Path = DEFAULT_NEAT_CONFIG
     neat_variant_paths: tuple[Path, ...] = DEFAULT_NEAT_VARIANT_CONFIGS
+    probe_samples: int = 64
 
     @property
     def image_channels(self) -> int:

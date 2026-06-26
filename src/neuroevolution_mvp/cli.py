@@ -60,6 +60,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=ExperimentConfig.learning_rate,
         help="Learning rate used by the gradient optimizer.",
     )
+    parser.add_argument(
+        "--pdf-group",
+        choices=(
+            "both_correct",
+            "baseline_correct_evolved_wrong",
+            "evolved_correct_baseline_wrong",
+            "both_wrong",
+        ),
+        default="both_correct",
+    )
+    parser.add_argument("--probe-samples", type=int, default=ExperimentConfig.probe_samples)
     return parser
 
 
@@ -80,10 +91,17 @@ def main() -> None:
         neat_variant_paths=variant_paths,
         optimizer_name=args.optimizer,
         learning_rate=args.learning_rate,
+        probe_samples=args.probe_samples,   
     )
     results = run_experiment(config)
     pdf_path = args.pdf_path or artifact_dir / f"{args.dataset}_interpretability_validation.pdf"
-    pdf_path = export_interpretability_pdf(config, pdf_path, sample_count=args.pdf_samples)
+
+    pdf_path = export_interpretability_pdf(
+        config,
+        pdf_path,
+        sample_count=args.pdf_samples,
+        pdf_group=args.pdf_group,
+    )
 
     print("\nSonda de interpretacao")
     for name, value in results["interpretation_summary"].items():

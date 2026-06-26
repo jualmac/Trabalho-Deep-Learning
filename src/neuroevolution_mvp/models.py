@@ -225,3 +225,64 @@ def _enabled_connections(genome: neat.DefaultGenome) -> list[tuple[int, int]]:
 
 def _edge_key(source: int, target: int) -> str:
     return f"{source}_to_{target}"
+
+class SmallCifarCNN(nn.Module):
+    def __init__(
+        self,
+        image_size: int,
+        num_classes: int = 10,
+        feature_size: int = 128,
+    ) -> None:
+        super().__init__()
+        self.image_size = image_size
+        self.feature_size = feature_size
+
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(64, feature_size, kernel_size=3, padding=1),
+            nn.BatchNorm2d(feature_size),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
+        )
+        self.classifier = nn.Linear(feature_size, num_classes)
+
+    def forward_features(self, inputs: torch.Tensor) -> torch.Tensor:
+        if inputs.ndim == 2:
+            inputs = inputs.reshape(-1, 3, self.image_size, self.image_size)
+
+        features = self.encoder(inputs)
+        return features.flatten(1)
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        features = self.forward_features(inputs)
+        return self.classifier(features)
+    
+class CnnEmbeddingWrappedModel(nn.Module):
+    def __init__(
+        self,
+        encoder: SmallCifarCNN,
+        classifier: nn.Module,
+    ) -> None:
+        super().__init__()
+        self.encoder = encoder
+        self.classifier = classifier
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        with torch.no_grad():
+            features = self.encoder.forward_features(inputs)
+        return self.classifier(features)

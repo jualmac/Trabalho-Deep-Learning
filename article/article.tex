@@ -1,0 +1,248 @@
+\section{Metodologia experimental}
+\label{sec:metodologia_experimental}
+
+Este estudo compara diferentes formas de obtenção de estruturas e parâmetros neurais em tarefas de classificação de imagens. O objetivo não é apenas maximizar a acurácia, mas avaliar em que medida topologias obtidas por neuroevolução podem ser reaproveitadas por treinamento baseado em gradiente e, posteriormente, analisadas por mapas de atribuição baseados em oclusão. Assim, a acurácia é utilizada como critério de contextualização e comparabilidade entre os modelos, enquanto a análise de interpretação busca investigar a coerência espacial das regiões sensíveis às decisões dos classificadores.
+
+Foram consideradas três condições experimentais principais. A primeira corresponde a um modelo \textit{baseline} treinado diretamente por gradiente, sem uso de topologias evoluídas. A segunda corresponde ao NEAT puro, no qual a solução selecionada é aquela obtida diretamente pelo processo neuroevolutivo. A terceira corresponde à topologia evoluída pelo NEAT com pesos reinicializados e posteriormente treinados por gradiente. Esta última condição é metodologicamente importante porque separa o efeito da arquitetura evoluída do efeito dos pesos produzidos pela própria neuroevolução. Em outras palavras, ao reinicializar os pesos antes do treinamento por gradiente, avalia-se se a topologia descoberta pela evolução contém uma estrutura útil para o aprendizado supervisionado, sem confundir esse efeito com a configuração específica de pesos encontrada durante a busca evolutiva.
+
+Os experimentos foram conduzidos em KMNIST, Fashion-MNIST e CIFAR-10. Para KMNIST e Fashion-MNIST, foram utilizadas imagens monocromáticas de dimensão $28 \times 28$, com $2.000$ amostras de treinamento e $500$ amostras de teste. Em ambos os casos, a neuroevolução foi executada por $30$ gerações; o \textit{baseline} foi treinado por $30$ épocas; e a topologia evoluída, após reinicialização dos pesos, foi treinada por $25$ épocas. O otimizador utilizado foi SGD, com taxa de aprendizado $0{,}03$ e tamanho de lote igual a $64$.
+
+Para CIFAR-10, foram consideradas duas execuções. A primeira utilizou $20.000$ amostras de treinamento e $5.000$ de teste, com imagens RGB de dimensão $32 \times 32$, $30$ gerações de NEAT, $50$ épocas para o \textit{baseline} e $50$ épocas para a topologia evoluída retreinada. A segunda utilizou o conjunto completo, com $50.000$ amostras de treinamento e $10.000$ de teste, mantendo imagens RGB de dimensão $32 \times 32$, $30$ gerações de NEAT e $60$ épocas tanto para o \textit{baseline} quanto para a topologia evoluída retreinada. Em ambas as execuções de CIFAR-10, foi utilizado o otimizador AdamW com tamanho de lote igual a $64$, com taxa de aprendizado $0{,}001$ na execução com $20.000$ amostras de treinamento e $0{,}0005$ na execução completa.
+
+A Tabela~\ref{tab:configuracoes_experimentais} resume as configurações consideradas.
+
+\begin{table}[htbp]
+\centering
+\caption{Configurações experimentais utilizadas nas execuções analisadas.}
+\label{tab:configuracoes_experimentais}
+\begin{tabular}{lccccccccc}
+\hline
+Dataset & Dimensão & Canais & Treino & Teste & Gerações & Épocas base & Épocas retreino & Otimizador & Taxa \
+\hline
+KMNIST & $28 \times 28$ & $1$ & $2.000$ & $500$ & $30$ & $30$ & $25$ & SGD & $0{,}03$ \
+Fashion-MNIST & $28 \times 28$ & $1$ & $2.000$ & $500$ & $30$ & $30$ & $25$ & SGD & $0{,}03$ \
+CIFAR-10 & $32 \times 32$ & $3$ & $20.000$ & $5.000$ & $30$ & $50$ & $50$ & AdamW & $0{,}001$ \
+CIFAR-10 & $32 \times 32$ & $3$ & $50.000$ & $10.000$ & $30$ & $60$ & $60$ & AdamW & $0{,}0005$ \
+\hline
+\end{tabular}
+\end{table}
+
+As variantes selecionadas pela etapa experimental são apresentadas na Tabela~\ref{tab:variantes_selecionadas}. Para KMNIST e Fashion-MNIST, a variante selecionada pertence à família HyperNEAT, representada por uma CPPN geradora. Para CIFAR-10, a variante selecionada foi direta, baseada em \textit{embeddings} extraídos por uma arquitetura convolucional auxiliar.
+
+\begin{table}[htbp]
+\centering
+\caption{Variantes selecionadas em cada configuração experimental.}
+\label{tab:variantes_selecionadas}
+\begin{tabular}{llccc}
+\hline
+Dataset & Variante selecionada & Família & Nós evoluídos & Conexões habilitadas \
+\hline
+KMNIST & \texttt{hyperneat_mnist_cppn} & HyperNEAT & $3$ & $6$ \
+Fashion-MNIST & \texttt{hyperneat_mnist_cppn} & HyperNEAT & $1$ & $5$ \
+CIFAR-10, $20.000/5.000$ & \texttt{neat_cifar_cnn_embedding} & direta & $11$ & $223$ \
+CIFAR-10, $50.000/10.000$ & \texttt{neat_cifar_cnn_embedding} & direta & $10$ & $188$ \
+\hline
+\end{tabular}
+\end{table}
+
+\section{Formalização da comparação}
+\label{sec:formalizacao_comparacao}
+
+Seja $x_i \in \mathcal{X}$ uma imagem de entrada e $y_i \in {1,\ldots,C}$ sua classe verdadeira. Para cada condição experimental, considera-se um modelo $f_m$, em que $m$ identifica o \textit{baseline}, o NEAT puro ou a topologia evoluída retreinada por gradiente. O vetor de \textit{logits} produzido pelo modelo é dado por
+\begin{equation}
+z_m(x_i) = f_m(x_i),
+\label{eq:logits}
+\end{equation}
+e a predição associada é definida como
+\begin{equation}
+\hat{y}m(x_i) = \arg\max{c \in {1,\ldots,C}} z_{m,c}(x_i).
+\label{eq:predicao}
+\end{equation}
+
+A acurácia é utilizada para contextualizar a qualidade preditiva dos modelos:
+\begin{equation}
+\mathrm{Acc}(m) =
+\frac{1}{n}
+\sum_{i=1}^{n}
+\mathbb{I}\left{\hat{y}_m(x_i)=y_i\right},
+\label{eq:acuracia}
+\end{equation}
+em que $\mathbb{I}{\cdot}$ é a função indicadora.
+
+Para a análise de interpretação, considera-se um mapa de atribuição por oclusão $A_m(x_i)$ associado ao modelo $m$ e à imagem $x_i$. Esse mapa representa a variação de sensibilidade do modelo quando regiões da entrada são ocluídas. Nesta etapa, não foi calculada a métrica DAD. A análise foi conduzida exclusivamente com as métricas disponíveis nos arquivos experimentais: similaridade por cosseno, sobreposição das principais regiões, diferença média entre mapas e concordância de predição.
+
+A similaridade por cosseno entre dois mapas de atribuição $A_a(x_i)$ e $A_b(x_i)$ é definida como
+\begin{equation}
+\mathrm{Cos}\left(A_a,A_b\right)
+=
+\frac{
+\langle \mathrm{vec}(A_a), \mathrm{vec}(A_b) \rangle
+}{
+|\mathrm{vec}(A_a)|_2 , |\mathrm{vec}(A_b)|_2
+},
+\label{eq:cosseno}
+\end{equation}
+em que $\mathrm{vec}(\cdot)$ denota a vetorização do mapa.
+
+A sobreposição das principais regiões, denominada \textit{top-overlap}, compara os conjuntos de posições mais relevantes em cada mapa. Seja $\mathcal{T}_k(A_m)$ o conjunto das $k$ posições de maior magnitude em $A_m$. A sobreposição é dada por
+\begin{equation}
+\mathrm{TopOverlap}(A_a,A_b)
+=
+\frac{
+|\mathcal{T}_k(A_a) \cap \mathcal{T}_k(A_b)|
+}{
+|\mathcal{T}_k(A_a)|
+}.
+\label{eq:topoverlap}
+\end{equation}
+Essa métrica indica coincidência espacial entre regiões mais salientes, mas não implica causalidade nem equivalência representacional entre os modelos.
+
+A diferença média entre mapas é dada por
+\begin{equation}
+\Delta(A_a,A_b)
+=
+\frac{1}{d}
+\sum_{j=1}^{d}
+\left|
+A_{a,j} - A_{b,j}
+\right|,
+\label{eq:diferenca_media}
+\end{equation}
+em que $d$ é o número de posições do mapa de atribuição.
+
+Por fim, a concordância de predição entre dois modelos $a$ e $b$ é definida como
+\begin{equation}
+\mathrm{Agr}(a,b)
+=
+\frac{1}{n}
+\sum_{i=1}^{n}
+\mathbb{I}\left{
+\hat{y}_a(x_i)=\hat{y}_b(x_i)
+\right}.
+\label{eq:concordancia_predicao}
+\end{equation}
+Essa medida não avalia a correção da predição em relação ao rótulo verdadeiro, mas sim a concordância entre as decisões produzidas pelos modelos comparados.
+
+\section{Resultados}
+\label{sec:resultados}
+
+A Tabela~\ref{tab:acuracias} apresenta as acurácias obtidas pelas três condições principais: \textit{baseline} treinado por gradiente, NEAT puro e topologia evoluída retreinada por gradiente.
+
+\begin{table}[htbp]
+\centering
+\caption{Acurácias obtidas pelo \textit{baseline}, pelo NEAT puro e pela topologia evoluída retreinada por gradiente.}
+\label{tab:acuracias}
+\begin{tabular}{lccc}
+\hline
+Dataset & Baseline & NEAT puro & Topologia evoluída + gradiente \
+\hline
+KMNIST & $0{,}732$ & $0{,}152$ & $0{,}620$ \
+Fashion-MNIST & $0{,}784$ & $0{,}276$ & $0{,}808$ \
+CIFAR-10, $20.000/5.000$ & $0{,}738$ & $0{,}399$ & $0{,}727$ \
+CIFAR-10, $50.000/10.000$ & $0{,}792$ & $0{,}404$ & $0{,}765$ \
+\hline
+\end{tabular}
+\end{table}
+
+Em KMNIST, o NEAT puro apresentou acurácia de apenas $0{,}152$, substancialmente inferior ao \textit{baseline}, que obteve $0{,}732$. O retreinamento da topologia evoluída elevou a acurácia para $0{,}620$, indicando que a estrutura selecionada pela neuroevolução pode ser aproveitada pelo treinamento por gradiente. No entanto, esse desempenho ainda permanece abaixo do \textit{baseline}, sugerindo que, nesse conjunto de dados, a topologia evoluída não foi suficiente para igualar o desempenho do treinamento direto por gradiente.
+
+Em Fashion-MNIST, observou-se o resultado mais favorável à topologia evoluída retreinada. O NEAT puro atingiu $0{,}276$, enquanto o \textit{baseline} obteve $0{,}784$. Após a reinicialização e o treinamento por gradiente, a topologia evoluída alcançou $0{,}808$, superando o \textit{baseline}. Esse resultado sugere que, nesse cenário, a topologia produzida pela busca neuroevolutiva forneceu uma estrutura aproveitável pelo otimizador, resultando em desempenho preditivo superior ao modelo treinado diretamente por gradiente.
+
+Nos experimentos com CIFAR-10, a topologia evoluída retreinada aproximou-se do \textit{baseline}, mas permaneceu ligeiramente abaixo. Na execução com $20.000$ amostras de treinamento e $5.000$ de teste, o \textit{baseline} obteve $0{,}738$, enquanto a topologia evoluída retreinada alcançou $0{,}727$. Na execução completa, com $50.000$ amostras de treinamento e $10.000$ de teste, o \textit{baseline} atingiu $0{,}792$, e a topologia evoluída retreinada obteve $0{,}765$. Esses resultados indicam que, em um conjunto RGB mais complexo, o uso da topologia evoluída combinada ao treinamento por gradiente pode produzir desempenho competitivo, embora ainda inferior ao treinamento direto do \textit{baseline}.
+
+A Tabela~\ref{tab:metricas_interpretacao} apresenta as métricas de interpretação obtidas a partir dos mapas de oclusão. Para KMNIST e Fashion-MNIST, a análise foi baseada em $24$ amostras. Para CIFAR-10, foram utilizadas $100$ amostras de interpretação.
+
+\begin{table}[htbp]
+\centering
+\caption{Métricas de interpretação baseadas em mapas de oclusão.}
+\label{tab:metricas_interpretacao}
+\begin{tabular}{lccccccc}
+\hline
+Dataset &
+$N_{\mathrm{interp}}$ &
+$\mathrm{Cos}(B,G)$ &
+$\mathrm{Top}(B,G)$ &
+$\mathrm{Cos}(B,E)$ &
+$\mathrm{Cos}(E,G)$ &
+$\mathrm{Top}(E,G)$ &
+$\mathrm{Agr}(E,G)$ \
+\hline
+KMNIST & $24$ & $0{,}328$ & $0{,}453$ & $0{,}262$ & $0{,}294$ & $0{,}412$ & $0{,}000$ \
+Fashion-MNIST & $24$ & $0{,}383$ & $0{,}403$ & $0{,}282$ & $0{,}280$ & $0{,}279$ & $0{,}167$ \
+CIFAR-10, $20.000/5.000$ & $100$ & $0{,}031$ & $0{,}112$ & $0{,}028$ & $0{,}262$ & $1{,}000$ & $0{,}230$ \
+CIFAR-10, $50.000/10.000$ & $100$ & $0{,}037$ & $0{,}109$ & $0{,}035$ & $0{,}231$ & $1{,}000$ & $0{,}240$ \
+\hline
+\end{tabular}
+
+\vspace{0.2cm}
+\footnotesize{
+$B$: \textit{baseline}; $E$: NEAT puro; $G$: topologia evoluída retreinada por gradiente.
+}
+\end{table}
+
+A Tabela~\ref{tab:diferenca_media} apresenta a diferença média entre os mapas do NEAT puro e da topologia evoluída retreinada.
+
+\begin{table}[htbp]
+\centering
+\caption{Diferença média entre mapas do NEAT puro e da topologia evoluída retreinada por gradiente.}
+\label{tab:diferenca_media}
+\begin{tabular}{lc}
+\hline
+Dataset & Diferença média entre NEAT puro e NEAT + gradiente \
+\hline
+KMNIST & $0{,}073$ \
+Fashion-MNIST & $0{,}098$ \
+CIFAR-10, $20.000/5.000$ & $0{,}013$ \
+CIFAR-10, $50.000/10.000$ & $0{,}013$ \
+\hline
+\end{tabular}
+\end{table}
+
+Em KMNIST, a similaridade por cosseno entre o \textit{baseline} e a topologia evoluída retreinada foi $0{,}328$, com \textit{top-overlap} de $0{,}453$. Esses valores são moderados em relação aos demais experimentos analisados, mas devem ser interpretados com cautela devido ao número reduzido de amostras de interpretação. A concordância de predição entre o NEAT puro e a topologia retreinada foi $0{,}000$, indicando que, nas amostras avaliadas, as decisões dos dois modelos não coincidiram. Esse resultado reforça a distinção entre a solução evoluída diretamente e a solução obtida após reinicialização e treinamento por gradiente.
+
+Em Fashion-MNIST, a similaridade por cosseno entre \textit{baseline} e topologia evoluída retreinada foi $0{,}383$, com \textit{top-overlap} de $0{,}403$. Esses valores sugerem maior concordância espacial em comparação aos experimentos de CIFAR-10. No entanto, a similaridade entre NEAT puro e topologia retreinada foi $0{,}280$, e a concordância de predição foi $0{,}167$. Assim, mesmo quando o retreinamento da topologia evoluída supera o \textit{baseline} em acurácia, os mapas de oclusão não autorizam afirmar que o modelo retreinado preserva integralmente o comportamento espacial ou decisório do NEAT puro.
+
+Nos experimentos com CIFAR-10, a similaridade espacial entre \textit{baseline} e topologia evoluída retreinada foi baixa. Na execução com $20.000$ amostras de treinamento, o cosseno foi $0{,}031$ e o \textit{top-overlap} foi $0{,}112$. Na execução completa, o cosseno foi $0{,}037$ e o \textit{top-overlap} foi $0{,}109$. Esses valores indicam que, embora a topologia evoluída retreinada apresente acurácia próxima ao \textit{baseline}, seus mapas de oclusão não coincidem fortemente com os mapas do modelo treinado diretamente por gradiente.
+
+Um resultado que exige atenção nos experimentos de CIFAR-10 é o \textit{top-overlap} igual a $1{,}000$ entre o NEAT puro e a topologia evoluída retreinada, observado nas duas execuções. Esse valor aparece simultaneamente a baixas concordâncias de predição, $0{,}230$ e $0{,}240$, respectivamente. Portanto, tal coincidência espacial das regiões de maior atribuição não deve ser interpretada como equivalência funcional ou representacional entre os modelos. Ela pode indicar estabilidade de regiões selecionadas pela métrica de sobreposição, mas não implica que as decisões produzidas pelos dois modelos sejam equivalentes.
+
+\section{Discussão}
+\label{sec:discussao}
+
+Os resultados apontam para uma distinção clara entre a utilidade da topologia evoluída e a suficiência do NEAT puro como classificador final. Em todos os experimentos, o NEAT puro apresentou desempenho inferior à topologia evoluída retreinada. Isso sugere que a neuroevolução, nas condições avaliadas, foi mais efetiva como mecanismo de busca estrutural do que como procedimento completo de estimação de pesos e estrutura.
+
+A reinicialização dos pesos antes do treinamento por gradiente é central para essa interpretação. Como os pesos utilizados na condição retreinada não são os mesmos produzidos diretamente pela evolução, o ganho de desempenho não deve ser atribuído à preservação dos pesos evoluídos. O que se avalia, nesse caso, é a capacidade da estrutura evoluída de servir como arquitetura inicial para aprendizado supervisionado. Assim, a diferença entre NEAT puro e topologia retreinada informa sobre o papel do treinamento por gradiente em transformar uma estrutura evolutiva em um classificador mais competitivo.
+
+Em Fashion-MNIST, a topologia evoluída retreinada superou o \textit{baseline}, obtendo $0{,}808$ contra $0{,}784$. Esse resultado é particularmente relevante porque indica que a estrutura obtida por HyperNEAT, mesmo compacta em termos de nós e conexões evoluídas, pôde ser aproveitada pelo treinamento por gradiente de modo eficaz. Em KMNIST, por outro lado, o retreinamento elevou substancialmente a acurácia em relação ao NEAT puro, de $0{,}152$ para $0{,}620$, mas permaneceu abaixo do \textit{baseline}. Esse caso ilustra uma situação em que a topologia evoluída contém informação estrutural aproveitável, mas insuficiente para igualar a solução obtida por treinamento direto.
+
+Nos experimentos com CIFAR-10, a interpretação deve considerar a maior complexidade do conjunto de dados. A execução completa produziu acurácia de $0{,}765$ para a topologia evoluída retreinada, próxima ao \textit{baseline} de $0{,}792$. Embora essa diferença indique que o \textit{baseline} ainda é superior, o resultado mostra que a topologia evoluída pode ser aproveitada em um cenário com imagens RGB e maior escala de treinamento. A comparação entre as duas execuções de CIFAR-10 também sugere que o aumento do conjunto de treinamento e o ajuste da taxa de aprendizado contribuíram para melhorar a competitividade da topologia evoluída retreinada.
+
+As métricas de interpretação, entretanto, mostram que desempenho preditivo e similaridade espacial não devem ser tratados como equivalentes. Em CIFAR-10, a topologia evoluída retreinada aproxima-se do \textit{baseline} em acurácia, mas apresenta baixa similaridade por cosseno e baixa sobreposição das regiões mais relevantes em relação ao \textit{baseline}. Portanto, não se pode concluir que os dois modelos utilizam as mesmas evidências visuais, nem que possuem representações internas equivalentes. O que se observa é apenas que ambos alcançam desempenhos preditivos próximos sob certas configurações experimentais.
+
+Em KMNIST e Fashion-MNIST, os valores de similaridade entre \textit{baseline} e topologia retreinada são maiores do que em CIFAR-10, mas ainda moderados. Isso sugere que a concordância espacial entre os mapas de oclusão existe em algum grau, mas não é suficiente para afirmar equivalência de estratégias de decisão. Além disso, a baixa acurácia do NEAT puro limita a interpretação de seus mapas. Quando um modelo apresenta desempenho preditivo muito baixo, seus mapas de oclusão explicam uma decisão instável ou pouco confiável, e não necessariamente uma estrutura visual semanticamente relevante para a tarefa.
+
+Dessa forma, os resultados favorecem uma interpretação equilibrada: a topologia evoluída pode ser útil como arquitetura a ser refinada por gradiente, mas a análise dos mapas de oclusão deve ser conduzida de modo cauteloso. Similaridade por cosseno, \textit{top-overlap} e diferença média entre mapas descrevem relações espaciais entre atribuições, mas não estabelecem causalidade interna nem demonstram que dois modelos implementam o mesmo mecanismo de decisão.
+
+\section{Limitações}
+\label{sec:limitacoes}
+
+A primeira limitação é que os resultados analisados correspondem a execuções com uma única semente aleatória. Como métodos neuroevolutivos podem apresentar variabilidade entre execuções, resultados mais robustos exigem repetições independentes e apresentação de médias e desvios-padrão.
+
+A segunda limitação refere-se ao número de amostras utilizadas na análise de interpretação. Para KMNIST e Fashion-MNIST, foram utilizadas apenas $24$ amostras de interpretação. Esse número é suficiente para uma análise exploratória, mas limitado para sustentar conclusões gerais sobre os padrões de oclusão. Em CIFAR-10, foram utilizadas $100$ amostras, o que amplia a base da análise, mas ainda requer cautela.
+
+A terceira limitação é a ausência da métrica DAD nos arquivos experimentais atuais. Embora tal métrica possa ser relevante em análises futuras, os resultados aqui discutidos restringem-se às medidas disponíveis: similaridade por cosseno, sobreposição das principais regiões, diferença média entre mapas e concordância de predição.
+
+A quarta limitação está relacionada à diferença de escala entre os experimentos. KMNIST e Fashion-MNIST foram avaliados com $2.000$ amostras de treinamento e $500$ de teste, enquanto CIFAR-10 foi avaliado em configurações com $20.000/5.000$ e $50.000/10.000$ amostras. Assim, as comparações entre datasets devem ser interpretadas como evidências dentro de contextos experimentais distintos, e não como comparações diretas de dificuldade ou superioridade absoluta.
+
+Por fim, as métricas baseadas em mapas de oclusão não provam causalidade interna. Um alto valor de sobreposição ou cosseno indica semelhança espacial entre mapas, mas não demonstra que os modelos possuem representações internas equivalentes. De modo análogo, baixa similaridade entre mapas não implica necessariamente que um modelo esteja incorreto; pode apenas indicar que modelos diferentes exploram regiões distintas da entrada para produzir decisões semelhantes.
+
+\section{Conclusão}
+\label{sec:conclusao}
+
+Os experimentos indicam que a neuroevolução, nas configurações analisadas, é mais promissora como mecanismo de busca estrutural do que como substituta integral do treinamento por gradiente. O NEAT puro apresentou desempenho baixo em KMNIST e Fashion-MNIST, e desempenho moderado nos experimentos de CIFAR-10. Entretanto, quando a topologia evoluída teve seus pesos reinicializados e foi posteriormente treinada por gradiente, observou-se aumento substancial de desempenho.
+
+Em Fashion-MNIST, a topologia evoluída retreinada superou o \textit{baseline}, alcançando acurácia de $0{,}808$ contra $0{,}784$. Em KMNIST, o retreinamento melhorou a acurácia em relação ao NEAT puro, mas permaneceu abaixo do \textit{baseline}. Em CIFAR-10, a topologia evoluída retreinada aproximou-se do desempenho do \textit{baseline}, atingindo $0{,}727$ na execução com $20.000$ amostras de treinamento e $0{,}765$ na execução completa, contra $0{,}738$ e $0{,}792$ dos respectivos \textit{baselines}.
+
+A análise por mapas de oclusão sugere que a melhoria preditiva decorrente do treinamento por gradiente não deve ser interpretada como preservação direta do comportamento do NEAT puro. Em particular, os resultados de CIFAR-10 mostram baixa similaridade espacial entre \textit{baseline} e topologia evoluída retreinada, apesar da proximidade em acurácia. Além disso, o \textit{top-overlap} igual a $1{,}000$ entre NEAT puro e topologia retreinada em CIFAR-10 deve ser interpretado com cautela, pois ocorre junto a baixa concordância de predição.
+
+Portanto, os resultados sustentam uma conclusão tecnicamente defensável: topologias evoluídas podem ser aproveitadas por treinamento baseado em gradiente e, em alguns cenários, alcançar desempenho competitivo ou superior ao \textit{baseline}. Contudo, os mapas de oclusão não autorizam afirmar equivalência causal ou representacional entre os modelos. Eles fornecem evidências exploratórias sobre padrões espaciais de sensibilidade, que devem ser complementadas por repetições com múltiplas sementes, maior número de amostras de interpretação e validação adicional das métricas de atribuição.

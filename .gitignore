@@ -1,10 +1,6 @@
 src/__pycache__/
 src/venv/
-src/configs
-src/artifacts
 
 
 src/neuroevolution_mvp/__pycache__/
 src/neuroevolution_mvp/venv/
-src/neuroevolution_mvp/configs
-src/neuroevolution_mvp/artifacts

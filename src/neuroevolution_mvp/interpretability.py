@@ -58,6 +58,56 @@ def _infer_channels(flat_size: int, image_size: int) -> int:
         )
     return flat_size // pixels
 
+def block_occlusion_map(
+    model: torch.nn.Module,
+    image: torch.Tensor,
+    image_size: int,
+    patch_size: int = 3,
+    stride: int = 1,
+    occlusion_value: float = 0.0,
+) -> torch.Tensor:
+    model.eval()
+
+    with torch.no_grad():
+        original_logits = model(image.unsqueeze(0))
+        probabilities = torch.softmax(original_logits, dim=1)
+        target_class = int(probabilities.argmax(dim=1).item())
+        original_confidence = float(probabilities[0, target_class].item())
+
+    if image.ndim == 2:
+        heatmap = torch.zeros_like(image)
+        height, width = image.shape
+    else:
+        heatmap = torch.zeros(image.shape[-2:], dtype=image.dtype)
+        height, width = image.shape[-2:]
+
+    for row_start in range(0, height, stride):
+        for col_start in range(0, width, stride):
+            row_end = min(row_start + patch_size, height)
+            col_end = min(col_start + patch_size, width)
+
+            occluded = image.clone()
+            if occluded.ndim == 2:
+                occluded[row_start:row_end, col_start:col_end] = occlusion_value
+            else:
+                occluded[:, row_start:row_end, col_start:col_end] = occlusion_value
+
+            with torch.no_grad():
+                logits = model(occluded.unsqueeze(0))
+                probabilities = torch.softmax(logits, dim=1)
+                occluded_confidence = float(probabilities[0, target_class].item())
+
+            importance = max(original_confidence - occluded_confidence, 0.0)
+            heatmap[row_start:row_end, col_start:col_end] = torch.maximum(
+                heatmap[row_start:row_end, col_start:col_end],
+                torch.tensor(importance, dtype=heatmap.dtype),
+            )
+
+    max_value = float(heatmap.max().item())
+    if max_value > 0:
+        heatmap = heatmap / max_value
+
+    return heatmap
 
 def compare_maps(
     first: torch.Tensor,

@@ -1,0 +1,648 @@
+{
+  "config": {
+    "seed": 42,
+    "dataset": "mnist",
+    "image_size": 28,
+    "train_limit": 2000,
+    "test_limit": 500,
+    "neat_eval_limit": 2000,
+    "neat_generations": 30,
+    "neat_winner_eval_limit": 1000,
+    "baseline_epochs": 30,
+    "evolved_sgd_epochs": 25,
+    "batch_size": 64,
+    "learning_rate": 0.03,
+    "optimizer_name": "sgd",
+    "hidden_units": 64,
+    "artifact_dir": "src\\artifacts\\mnist28_sgd_g30_e30",
+    "neat_config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_features_full.ini",
+    "neat_variant_paths": [
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14_sparse.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14_dense.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14_hidden.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_features_full.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_prototypes_full.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_seeded_prototypes_full.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\hyperneat_mnist_cppn.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\hyperneat_mnist_features_cppn.ini",
+      "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\hyperneat_mnist_prototypes_cppn.ini"
+    ]
+  },
+  "summary": {
+    "baseline_sgd_accuracy": 0.958,
+    "neat_accuracy": 0.174,
+    "evolved_topology_sgd_accuracy": 0.89,
+    "optimizer": "sgd",
+    "dataset": "mnist",
+    "image_size": 28,
+    "image_channels": 1,
+    "selected_neat_variant": "hyperneat_mnist_features_cppn",
+    "selected_neat_family": "hyperneat",
+    "evolved_nodes": 3,
+    "evolved_enabled_connections": 6
+  },
+  "interpretation_summary": {
+    "probe_samples": 24.0,
+    "baseline_vs_neat_sgd_cosine": 0.4643641061459978,
+    "baseline_vs_neat_sgd_top_overlap": 0.6328347578347578,
+    "baseline_vs_neat_pure_cosine": 0.3448731430495779,
+    "neat_pure_vs_neat_sgd_cosine": 0.32300346344709396,
+    "neat_pure_vs_neat_sgd_top_overlap": 0.5409544159544158,
+    "neat_pure_vs_neat_sgd_difference": 0.043672115192748606,
+    "neat_pure_vs_neat_sgd_prediction_agreement": 0.16666666666666666
+  },
+  "baseline_history": [
+    {
+      "epoch": 1.0,
+      "train_loss": 2.305591678619385,
+      "test_accuracy": 0.12
+    },
+    {
+      "epoch": 2.0,
+      "train_loss": 2.3011745052337647,
+      "test_accuracy": 0.122
+    },
+    {
+      "epoch": 3.0,
+      "train_loss": 2.2941209354400636,
+      "test_accuracy": 0.182
+    },
+    {
+      "epoch": 4.0,
+      "train_loss": 2.1868239402770997,
+      "test_accuracy": 0.212
+    },
+    {
+      "epoch": 5.0,
+      "train_loss": 1.7539365005493164,
+      "test_accuracy": 0.464
+    },
+    {
+      "epoch": 6.0,
+      "train_loss": 1.3824734611511231,
+      "test_accuracy": 0.61
+    },
+    {
+      "epoch": 7.0,
+      "train_loss": 0.9555110354423523,
+      "test_accuracy": 0.668
+    },
+    {
+      "epoch": 8.0,
+      "train_loss": 0.7301596775054932,
+      "test_accuracy": 0.846
+    },
+    {
+      "epoch": 9.0,
+      "train_loss": 0.5514705975055695,
+      "test_accuracy": 0.832
+    },
+    {
+      "epoch": 10.0,
+      "train_loss": 0.4720261826515198,
+      "test_accuracy": 0.7
+    },
+    {
+      "epoch": 11.0,
+      "train_loss": 0.4406301031112671,
+      "test_accuracy": 0.888
+    },
+    {
+      "epoch": 12.0,
+      "train_loss": 0.31263878059387207,
+      "test_accuracy": 0.896
+    },
+    {
+      "epoch": 13.0,
+      "train_loss": 0.2747159790992737,
+      "test_accuracy": 0.82
+    },
+    {
+      "epoch": 14.0,
+      "train_loss": 0.2691931154131889,
+      "test_accuracy": 0.918
+    },
+    {
+      "epoch": 15.0,
+      "train_loss": 0.24205664682388306,
+      "test_accuracy": 0.948
+    },
+    {
+      "epoch": 16.0,
+      "train_loss": 0.19835633015632628,
+      "test_accuracy": 0.896
+    },
+    {
+      "epoch": 17.0,
+      "train_loss": 0.18848576056957245,
+      "test_accuracy": 0.89
+    },
+    {
+      "epoch": 18.0,
+      "train_loss": 0.19912601375579833,
+      "test_accuracy": 0.556
+    },
+    {
+      "epoch": 19.0,
+      "train_loss": 0.5399845041036606,
+      "test_accuracy": 0.916
+    },
+    {
+      "epoch": 20.0,
+      "train_loss": 0.20079128170013427,
+      "test_accuracy": 0.93
+    },
+    {
+      "epoch": 21.0,
+      "train_loss": 0.17122556839883327,
+      "test_accuracy": 0.942
+    },
+    {
+      "epoch": 22.0,
+      "train_loss": 0.14768688705563546,
+      "test_accuracy": 0.962
+    },
+    {
+      "epoch": 23.0,
+      "train_loss": 0.12074226170778274,
+      "test_accuracy": 0.924
+    },
+    {
+      "epoch": 24.0,
+      "train_loss": 0.12378908793628216,
+      "test_accuracy": 0.962
+    },
+    {
+      "epoch": 25.0,
+      "train_loss": 0.11724139386415482,
+      "test_accuracy": 0.946
+    },
+    {
+      "epoch": 26.0,
+      "train_loss": 0.10016915094852448,
+      "test_accuracy": 0.956
+    },
+    {
+      "epoch": 27.0,
+      "train_loss": 0.08918754240870476,
+      "test_accuracy": 0.902
+    },
+    {
+      "epoch": 28.0,
+      "train_loss": 0.10203143110871316,
+      "test_accuracy": 0.964
+    },
+    {
+      "epoch": 29.0,
+      "train_loss": 0.07456628802418709,
+      "test_accuracy": 0.942
+    },
+    {
+      "epoch": 30.0,
+      "train_loss": 0.06523784674704075,
+      "test_accuracy": 0.958
+    }
+  ],
+  "neat_history": [
+    {
+      "generation": 0.0,
+      "best_fitness": 0.34247250967255743,
+      "mean_fitness": 0.06601435694325981,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 1.0,
+      "best_fitness": 0.406127750598566,
+      "mean_fitness": 0.1452971663165845,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 2.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.18854052455294584,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 3.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.19086337614182772,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 4.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.2262815417120769,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 5.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.25465262861712384,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 6.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.2609083128678823,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 7.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.2810153345160443,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 8.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.27337615504939355,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 9.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.27729794280912895,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 10.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.2684565270079288,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 11.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.29520619447344815,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 12.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.2876953576731549,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 13.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.2700346495946385,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 14.0,
+      "best_fitness": 0.41598939091936427,
+      "mean_fitness": 0.29738335982813546,
+      "nodes": 1.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 15.0,
+      "best_fitness": 0.41934950248830005,
+      "mean_fitness": 0.30534712276271175,
+      "nodes": 2.0,
+      "enabled_connections": 4.0
+    },
+    {
+      "generation": 16.0,
+      "best_fitness": 0.41934950248830005,
+      "mean_fitness": 0.31722099172562923,
+      "nodes": 2.0,
+      "enabled_connections": 4.0
+    },
+    {
+      "generation": 17.0,
+      "best_fitness": 0.42440689840593404,
+      "mean_fitness": 0.29232727847379303,
+      "nodes": 3.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 18.0,
+      "best_fitness": 0.4329963799408051,
+      "mean_fitness": 0.3139240761882157,
+      "nodes": 2.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 19.0,
+      "best_fitness": 0.4329963799408051,
+      "mean_fitness": 0.29857671110095724,
+      "nodes": 2.0,
+      "enabled_connections": 5.0
+    },
+    {
+      "generation": 20.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.3205260920772273,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 21.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.29747854246040956,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 22.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.30594090236671495,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 23.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.320059311525797,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 24.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.31878960221266417,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 25.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.3344331976494641,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 26.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.32383401447607013,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 27.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.3257489579747834,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 28.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.31870529101778156,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    },
+    {
+      "generation": 29.0,
+      "best_fitness": 0.44565615827485683,
+      "mean_fitness": 0.30013749795165895,
+      "nodes": 3.0,
+      "enabled_connections": 6.0
+    }
+  ],
+  "neat_variant_results": [
+    {
+      "variant": "neat_mnist_14x14",
+      "family": "direct",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14.ini",
+      "accuracy": 0.388,
+      "best_fitness": 0.7641447918464876,
+      "nodes": 11,
+      "enabled_connections": 306,
+      "evolved_topology_accuracy": 0.614
+    },
+    {
+      "variant": "neat_mnist_14x14_sparse",
+      "family": "direct",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14_sparse.ini",
+      "accuracy": 0.28,
+      "best_fitness": 0.680429999023858,
+      "nodes": 11,
+      "enabled_connections": 81,
+      "evolved_topology_accuracy": 0.338
+    },
+    {
+      "variant": "neat_mnist_14x14_dense",
+      "family": "direct",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14_dense.ini",
+      "accuracy": 0.37,
+      "best_fitness": 0.7611019251190866,
+      "nodes": 13,
+      "enabled_connections": 558,
+      "evolved_topology_accuracy": 0.65
+    },
+    {
+      "variant": "neat_mnist_14x14_hidden",
+      "family": "direct",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_14x14_hidden.ini",
+      "accuracy": 0.428,
+      "best_fitness": 0.7633512552837747,
+      "nodes": 15,
+      "enabled_connections": 402,
+      "evolved_topology_accuracy": 0.61
+    },
+    {
+      "variant": "neat_mnist_features_full",
+      "family": "features",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_features_full.ini",
+      "accuracy": 0.306,
+      "best_fitness": 0.7521309620348035,
+      "nodes": 11,
+      "enabled_connections": 259,
+      "evolved_topology_accuracy": 0.614
+    },
+    {
+      "variant": "neat_mnist_prototypes_full",
+      "family": "prototypes",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_prototypes_full.ini",
+      "accuracy": 0.294,
+      "best_fitness": 0.7084676767287099,
+      "nodes": 10,
+      "enabled_connections": 122,
+      "evolved_topology_accuracy": 0.478
+    },
+    {
+      "variant": "neat_mnist_seeded_prototypes_full",
+      "family": "seeded_prototypes",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\neat_mnist_seeded_prototypes_full.ini",
+      "accuracy": 0.828,
+      "best_fitness": 1.630379407694735,
+      "nodes": 10,
+      "enabled_connections": 200,
+      "evolved_topology_accuracy": 0.814
+    },
+    {
+      "variant": "hyperneat_mnist_cppn",
+      "family": "hyperneat",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\hyperneat_mnist_cppn.ini",
+      "accuracy": 0.266,
+      "best_fitness": 0.5442568060546075,
+      "nodes": 4,
+      "enabled_connections": 5,
+      "evolved_topology_accuracy": 0.888
+    },
+    {
+      "variant": "hyperneat_mnist_features_cppn",
+      "family": "hyperneat",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\hyperneat_mnist_features_cppn.ini",
+      "accuracy": 0.174,
+      "best_fitness": 0.44565615827485683,
+      "nodes": 3,
+      "enabled_connections": 6,
+      "evolved_topology_accuracy": 0.89
+    },
+    {
+      "variant": "hyperneat_mnist_prototypes_cppn",
+      "family": "hyperneat",
+      "config_path": "C:\\Users\\user\\Documents\\mestrado\\Trabalho-Deep-Learning\\src\\configs\\hyperneat_mnist_prototypes_cppn.ini",
+      "accuracy": 0.192,
+      "best_fitness": 0.43885683415345805,
+      "nodes": 3,
+      "enabled_connections": 5,
+      "evolved_topology_accuracy": 0.882
+    }
+  ],
+  "evolved_sgd_history": [
+    {
+      "epoch": 1.0,
+      "train_loss": 1.223198700428009,
+      "test_accuracy": 0.852
+    },
+    {
+      "epoch": 2.0,
+      "train_loss": 0.5355800027847291,
+      "test_accuracy": 0.878
+    },
+    {
+      "epoch": 3.0,
+      "train_loss": 0.4419934124946594,
+      "test_accuracy": 0.892
+    },
+    {
+      "epoch": 4.0,
+      "train_loss": 0.399302925825119,
+      "test_accuracy": 0.892
+    },
+    {
+      "epoch": 5.0,
+      "train_loss": 0.3689472099542618,
+      "test_accuracy": 0.892
+    },
+    {
+      "epoch": 6.0,
+      "train_loss": 0.3447169682979584,
+      "test_accuracy": 0.896
+    },
+    {
+      "epoch": 7.0,
+      "train_loss": 0.3264196307659149,
+      "test_accuracy": 0.896
+    },
+    {
+      "epoch": 8.0,
+      "train_loss": 0.3121429864168167,
+      "test_accuracy": 0.902
+    },
+    {
+      "epoch": 9.0,
+      "train_loss": 0.2975607314109802,
+      "test_accuracy": 0.898
+    },
+    {
+      "epoch": 10.0,
+      "train_loss": 0.2879974775314331,
+      "test_accuracy": 0.894
+    },
+    {
+      "epoch": 11.0,
+      "train_loss": 0.27625024485588073,
+      "test_accuracy": 0.904
+    },
+    {
+      "epoch": 12.0,
+      "train_loss": 0.2670099837779999,
+      "test_accuracy": 0.892
+    },
+    {
+      "epoch": 13.0,
+      "train_loss": 0.26109542685747145,
+      "test_accuracy": 0.896
+    },
+    {
+      "epoch": 14.0,
+      "train_loss": 0.24838334453105926,
+      "test_accuracy": 0.902
+    },
+    {
+      "epoch": 15.0,
+      "train_loss": 0.24190695190429687,
+      "test_accuracy": 0.894
+    },
+    {
+      "epoch": 16.0,
+      "train_loss": 0.2353775749206543,
+      "test_accuracy": 0.896
+    },
+    {
+      "epoch": 17.0,
+      "train_loss": 0.22870137417316436,
+      "test_accuracy": 0.894
+    },
+    {
+      "epoch": 18.0,
+      "train_loss": 0.2241020770072937,
+      "test_accuracy": 0.89
+    },
+    {
+      "epoch": 19.0,
+      "train_loss": 0.21859635293483734,
+      "test_accuracy": 0.894
+    },
+    {
+      "epoch": 20.0,
+      "train_loss": 0.21396044063568115,
+      "test_accuracy": 0.886
+    },
+    {
+      "epoch": 21.0,
+      "train_loss": 0.2109875283241272,
+      "test_accuracy": 0.886
+    },
+    {
+      "epoch": 22.0,
+      "train_loss": 0.20643349188566207,
+      "test_accuracy": 0.888
+    },
+    {
+      "epoch": 23.0,
+      "train_loss": 0.20068423169851304,
+      "test_accuracy": 0.89
+    },
+    {
+      "epoch": 24.0,
+      "train_loss": 0.1949453376531601,
+      "test_accuracy": 0.892
+    },
+    {
+      "epoch": 25.0,
+      "train_loss": 0.19412271267175674,
+      "test_accuracy": 0.89
+    }
+  ]
+}

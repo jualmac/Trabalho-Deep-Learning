@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from logging import config
 from pathlib import Path
 from typing import Any
 
 import torch
+from torch.utils.data import DataLoader, TensorDataset
+
 
 from .artifacts import save_genome, save_json, save_model
 from .config import ExperimentConfig
@@ -19,6 +22,8 @@ from .models import (
     FixedNeatTopologyMLP,
     GeneratedSubstrateMLP,
     PrototypeWrappedModel,
+    SmallCifarCNN,
+    CnnEmbeddingWrappedModel
 )
 from .neat_runner import (
     build_hyperneat_feature_substrate,
@@ -26,7 +31,7 @@ from .neat_runner import (
     build_hyperneat_substrate,
     evolve_variants,
 )
-from .training import train_classifier
+from .training import train_classifier, extract_cnn_embeddings
 
 
 def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
@@ -44,11 +49,23 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         seed=config.seed,
     )
 
-    baseline = BaselineMLP(
-        config.input_size,
-        config.hidden_units,
-        image_channels=config.image_channels,
-    )
+    image_channels = data.image_channels
+    raw_input_size = config.image_size * config.image_size * image_channels
+    use_cnn_embeddings = config.dataset in {"cifar10", "cifar100_10"}
+
+    if use_cnn_embeddings:
+        baseline = SmallCifarCNN(
+            image_size=config.image_size,
+            num_classes=10,
+            feature_size=128,
+        )
+    else:
+        baseline = BaselineMLP(
+            raw_input_size,
+            config.hidden_units,
+            image_channels=image_channels,
+        )
+
     baseline_history = train_classifier(
         baseline,
         data.train_loader,
@@ -58,12 +75,43 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         optimizer_name=config.optimizer_name,
     )
 
+    if use_cnn_embeddings:
+        x_train_for_neat = extract_cnn_embeddings(
+            model=baseline,
+            inputs=data.x_train,
+            image_size=config.image_size,
+        )
+        x_test_for_neat = extract_cnn_embeddings(
+            model=baseline,
+            inputs=data.x_test,
+            image_size=config.image_size,
+        )
+        input_size_for_neat = 128
+
+        train_loader_for_candidate = DataLoader(
+            TensorDataset(x_train_for_neat, data.y_train),
+            batch_size=config.batch_size,
+            shuffle=True,
+        )
+        test_loader_for_candidate = DataLoader(
+            TensorDataset(x_test_for_neat, data.y_test),
+            batch_size=config.batch_size,
+            shuffle=False,
+        )
+    else:
+        x_train_for_neat = data.x_train
+        x_test_for_neat = data.x_test
+        input_size_for_neat = raw_input_size
+        train_loader_for_candidate = data.train_loader
+        test_loader_for_candidate = data.test_loader
+
+    
     evolved_candidates = []
     neat_variants = evolve_variants(
         config.neat_variant_paths or (config.neat_config_path,),
-        data.x_train,
+        x_train_for_neat,
         data.y_train,
-        data.x_test,
+        x_test_for_neat,
         data.y_test,
         image_size=config.image_size,
         generations=config.neat_generations,
@@ -73,16 +121,38 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
 
     for index, candidate in enumerate(neat_variants):
         set_seed(config.seed + 101 + index)
-        candidate_model = _candidate_sgd_model(candidate, config.input_size, config.image_size)
+
+        candidate_model = _candidate_sgd_model(
+            candidate,
+            input_size_for_neat,
+            config.image_size,
+        )
+
         candidate_history = train_classifier(
             candidate_model,
-            data.train_loader,
-            data.test_loader,
+            train_loader_for_candidate,
+            test_loader_for_candidate,
             epochs=config.evolved_sgd_epochs,
             learning_rate=config.learning_rate,
             optimizer_name=config.optimizer_name,
         )
-        candidate["result"]["evolved_topology_accuracy"] = candidate_history[-1]["test_accuracy"]
+
+        if use_cnn_embeddings:
+            train_loader_for_candidate = DataLoader(
+                TensorDataset(x_train_for_neat, data.y_train),
+                batch_size=config.batch_size,
+                shuffle=True,
+            )
+            test_loader_for_candidate = DataLoader(
+                TensorDataset(x_test_for_neat, data.y_test),
+                batch_size=config.batch_size,
+                shuffle=False,
+            )
+        else:
+            train_loader_for_candidate = data.train_loader
+            test_loader_for_candidate = data.test_loader
+        
+        candidate["result"]["evolved_topology_accuracy"] = _best_accuracy(candidate_history)
         candidate_payload = {
             "winner": candidate["winner"],
             "config": candidate["config"],
@@ -96,13 +166,14 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         evolved_candidates.append(candidate_payload)
 
     best_candidate = max(
-        evolved_candidates,
-        key=lambda row: (
-            row["result"]["accuracy"],
-            row["result"]["best_fitness"],
-            row["result"]["evolved_topology_accuracy"],
-        ),
+    evolved_candidates,
+    key=lambda row: (
+        row["result"].get("evolved_topology_accuracy", 0.0),
+        row["result"].get("accuracy", 0.0),
+        row["result"].get("best_fitness", 0.0),
+    ),
     )
+
     winner = best_candidate["winner"]
     neat_config = best_candidate["config"]
     neat_history = best_candidate["history"]
@@ -111,7 +182,25 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
     evolved_sgd_history = best_candidate["model_history"]
     neat_variant_results = [candidate["result"] for candidate in evolved_candidates]
 
-    neat_pure = _candidate_pure_model(best_candidate, config.input_size, config.image_size)
+    neat_pure = _candidate_pure_model(
+            best_candidate,
+            input_size_for_neat,
+            config.image_size,
+        )
+
+    if use_cnn_embeddings:
+        neat_pure_for_interpretation = CnnEmbeddingWrappedModel(
+            encoder=baseline,
+            classifier=neat_pure,
+        )
+        evolved_for_interpretation = CnnEmbeddingWrappedModel(
+            encoder=baseline,
+            classifier=evolved_sgd,
+        )
+    else:
+        neat_pure_for_interpretation = neat_pure
+        evolved_for_interpretation = evolved_sgd
+
     interpretation_summary = _compare_interpretations(
         baseline,
         neat_pure,
@@ -119,20 +208,20 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
         data.x_test,
         image_size=config.image_size,
         image_channels=config.image_channels,
-        sample_count=min(24, len(data.x_test)),
+        sample_count=min(config.probe_samples, len(data.x_test)),
     )
 
     results = {
         "config": _serializable_config(config),
         "summary": {
-            "baseline_sgd_accuracy": baseline_history[-1]["test_accuracy"],
+            "baseline_sgd_accuracy": _best_accuracy(baseline_history),
             "neat_accuracy": neat_accuracy,
-            "evolved_topology_sgd_accuracy": evolved_sgd_history[-1]["test_accuracy"],
+            "evolved_topology_sgd_accuracy": _best_accuracy(evolved_sgd_history),
             "optimizer": config.optimizer_name,
             "dataset": config.dataset,
             "image_size": config.image_size,
-            "image_channels": config.image_channels,
-            "selected_neat_variant": _selected_variant(neat_variant_results),
+            "image_channels": image_channels,
+            "selected_neat_variant": str(best_candidate["result"]["variant"]),
             "selected_neat_family": str(best_candidate["result"].get("family", "direct")),
             "evolved_nodes": len(winner.nodes),
             "evolved_enabled_connections": sum(
@@ -148,8 +237,8 @@ def run_experiment(config: ExperimentConfig) -> dict[str, Any]:
 
     save_json(config.artifact_dir / "results.json", results)
     save_genome(config.artifact_dir / "winner_genome.pkl", winner)
-    save_model(config.artifact_dir / "baseline_mlp.pt", baseline)
     save_model(config.artifact_dir / "evolved_topology_sgd.pt", evolved_sgd)
+    save_model(config.artifact_dir / "baseline_mlp.pt", baseline)
     if best_candidate["result"].get("family") in {"prototypes", "seeded_prototypes", "hyperneat_prototypes"}:
         torch.save(best_candidate["centroids"], config.artifact_dir / "prototype_centroids.pt")
     return results
@@ -206,6 +295,8 @@ def _reshape_image(image: torch.Tensor, image_size: int, image_channels: int) ->
         return image.reshape(image_size, image_size)
     return image.reshape(image_channels, image_size, image_size)
 
+def _best_accuracy(history: list[dict[str, float]]) -> float:
+    return max((row["test_accuracy"] for row in history), default=0.0)
 
 def _candidate_sgd_model(candidate: dict[str, Any], input_size: int, image_size: int):
     if candidate["result"].get("family") in {"prototypes", "seeded_prototypes"}:
@@ -353,12 +444,14 @@ def _serializable_config(config: ExperimentConfig) -> dict[str, Any]:
 def _selected_variant(rows: list[dict[str, Any]]) -> str:
     if not rows:
         return ""
+
     best = max(
         rows,
         key=lambda row: (
+            row.get("evolved_topology_accuracy", 0.0),
             row.get("accuracy", 0.0),
             row.get("best_fitness", 0.0),
-            row.get("evolved_topology_accuracy", 0.0),
         ),
     )
+
     return str(best["variant"])
