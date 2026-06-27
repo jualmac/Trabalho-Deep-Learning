@@ -1,0 +1,368 @@
+% Trecho LaTeX pronto para inserir no Overleaf.
+% Requer, no preambulo, pacotes usuais como: amsmath, booktabs.
+
+\section{Metodologia experimental}
+
+Este estudo avalia se diferentes procedimentos de otimiza\c{c}\~ao produzem
+padr\~oes espaciais distintos de sensibilidade em uma tarefa de classifica\c{c}\~ao
+do MNIST. A compara\c{c}\~ao principal considera duas condi\c{c}\~oes: (i) NEAT puro,
+em que a neuroevolu\c{c}\~ao determina simultaneamente a topologia e os pesos da
+rede; e (ii) NEAT + SGD, em que a topologia selecionada pelo NEAT \'{e}
+preservada, mas todos os pesos s\~ao reinicializados aleatoriamente e treinados
+posteriormente por descida do gradiente estoc\'astica.
+
+A reinicializa\c{c}\~ao dos pesos na condi\c{c}\~ao NEAT + SGD \'{e} uma decis\~ao
+metodol\'ogica necess\'aria. Caso o SGD herdasse os pesos evolu\'idos pelo NEAT, a
+solu\c{c}\~ao final refletiria uma combina\c{c}\~ao insepar\'avel entre evolu\c{c}\~ao e
+gradiente. Ao preservar apenas a topologia, o experimento contrasta dois
+mecanismos de ajuste de pesos sobre a mesma estrutura de conectividade.
+
+As imagens do MNIST foram redimensionadas para $26 \times 26$ pixels. Foram
+utilizadas 5.000 amostras de treinamento e 10.000 imagens de teste. O NEAT foi
+executado por 35 gera\c{c}\~oes. O baseline MLP treinado por SGD foi executado por
+15 \'{e}pocas, enquanto a topologia evolu\'ida e reinicializada foi treinada por
+25 \'{e}pocas. Em ambos os treinamentos por gradiente, utilizou-se SGD com taxa
+de aprendizado $0{,}03$ e lotes de 64 imagens.
+
+A acur\'acia preditiva \'{e} tratada neste estudo como um crit\'erio m\'inimo de
+comparabilidade, e n\~ao como o objeto principal de an\'alise. A interpreta\c{c}\~ao
+dos mapas s\'o \'{e} informativa se os modelos comparados tiverem desempenho
+suficiente para produzir decis\~oes semanticamente relevantes. Portanto, o foco
+anal\'itico recai sobre a concord\^ancia espacial dos mapas de atribui\c{c}\~ao, e a
+acur\'acia \'{e} usada para contextualizar a validade da compara\c{c}\~ao.
+
+A variante final analisada foi selecionada pela maior acur\'acia do NEAT puro.
+Portanto, o crit\'erio de sele\c{c}\~ao favorece o desempenho evolutivo direto, e
+n\~ao necessariamente a acur\'acia posterior da topologia retreinada por SGD.
+
+\section{Formaliza\c{c}\~ao dos mapas de atribui\c{c}\~ao}
+
+Seja $\mathcal{D}=\{(x_i,y_i)\}_{i=1}^{N}$ o conjunto de teste, em que
+$x_i \in \mathbb{R}^{H \times W}$ representa uma imagem e
+$y_i \in \{0,\ldots,C-1\}$ seu r\'otulo verdadeiro. Seja
+$\mathcal{M}=\{m_E,m_G\}$ o par de modelos comparados, em que $m_E$ denota o
+modelo obtido por NEAT puro e $m_G$ denota a mesma topologia retreinada por SGD
+ap\'os reinicializa\c{c}\~ao dos pesos.
+
+Para cada modelo $m \in \mathcal{M}$, seja
+$z_m(x)\in\mathbb{R}^{C}$ o vetor de logits produzido para a imagem $x$. A
+classe predita pelo modelo \'{e} definida por:
+
+\begin{equation}
+c_m(x) = \arg\max_k z_{m,k}(x),
+\end{equation}
+
+em que $z_{m,k}(x)$ \'{e} o logit da classe $k$. A interpretabilidade foi avaliada
+por oclus\~ao. Seja $\mathcal{R}=\{r_1,\ldots,r_L\}$ uma parti\c{c}\~ao da imagem em
+regi\~oes de oclus\~ao. Denota-se por $x\setminus r$ a imagem modificada pela
+remo\c{c}\~ao ou neutraliza\c{c}\~ao da regi\~ao $r$. A atribui\c{c}\~ao regional \'{e}
+definida como a varia\c{c}\~ao absoluta do logit da classe originalmente predita:
+
+\begin{equation}
+A_m(x,r) = \left| z_{m,c_m(x)}(x) -
+z_{m,c_m(x)}(x \setminus r) \right|.
+\end{equation}
+
+O valor absoluto captura tanto regi\~oes cuja remo\c{c}\~ao reduz a evid\^encia da
+classe predita quanto regi\~oes cuja remo\c{c}\~ao aumenta essa evid\^encia. Para
+comparar mapas em uma escala comum, as atribui\c{c}\~oes s\~ao projetadas para o
+dom\'inio dos pixels $\Omega=\{1,\ldots,H\}\times\{1,\ldots,W\}$ e normalizadas
+para soma unit\'aria:
+
+\begin{equation}
+P_m(x,p) =
+\frac{A_m(x,p)}
+{\sum_{q\in\Omega} A_m(x,q)},
+\quad p\in\Omega.
+\end{equation}
+
+Quando $\sum_{q\in\Omega} A_m(x,q)>0$, $P_m(x,\cdot)$ define uma distribui\c{c}\~ao
+espacial de sensibilidade sobre os pixels. Essa normaliza\c{c}\~ao permite comparar
+modelos com escalas de logit distintas. Nesta execu\c{c}\~ao, todos os 10.000 pares
+de mapas foram v\'alidos, resultando em cobertura de 100\%.
+
+\section{M\'etricas de concord\^ancia espacial}
+
+Para cada imagem $x_i$, denotamos por
+$P_i=P_{m_E}(x_i,\cdot)$ o mapa do NEAT puro e por
+$Q_i=P_{m_G}(x_i,\cdot)$ o mapa da topologia NEAT retreinada por SGD. A
+concord\^ancia espacial entre esses mapas \'{e} medida pelo Jaccard ponderado,
+tamb\'em conhecido como raz\~ao min--max:
+
+\begin{equation}
+WJ_i =
+\frac{\sum_{p\in\Omega} \min(P_i(p), Q_i(p))}
+{\sum_{p\in\Omega} \max(P_i(p), Q_i(p))}.
+\label{eq:weighted_jaccard}
+\end{equation}
+
+O valor de $WJ_i$ pertence ao intervalo $[0,1]$. Valores pr\'oximos de 1 indicam
+maior sobreposi\c{c}\~ao espacial entre os mapas, enquanto valores pr\'oximos de 0
+indicam baixa massa de atribui\c{c}\~ao compartilhada.
+
+A diverg\^encia agregada no conjunto de dados \'{e} definida pela
+\textit{Dataset Attention Divergence} (DAD):
+
+\begin{equation}
+DAD(\mathcal{D}) = 1 - \frac{1}{N}\sum_{i=1}^{N} WJ_i.
+\label{eq:dad}
+\end{equation}
+
+Assim, $DAD=0$ representa concord\^ancia espacial completa e $DAD=1$ representa
+diverg\^encia completa. A DAD \'{e} uma medida operacional de diverg\^encia entre
+mapas de atribui\c{c}\~ao; ela n\~ao implica, por si s\'o, equival\^encia causal,
+igualdade de representa\c{c}\~oes internas ou identidade funcional entre redes.
+
+Para controlar a distribui\c{c}\~ao das classes, tamb\'em se calcula a DAD macro.
+Se $\mathcal{D}_c=\{i:y_i=c\}$ e $\mathcal{C}^{\ast}$ \'{e} o conjunto de classes
+presentes no teste, ent\~ao:
+
+\begin{equation}
+DAD_{macro}
+= 1 - \frac{1}{|\mathcal{C}^{\ast}|}
+\sum_{c\in\mathcal{C}^{\ast}}
+\left(
+\frac{1}{|\mathcal{D}_c|}
+\sum_{i\in\mathcal{D}_c} WJ_i
+\right).
+\label{eq:dad_macro}
+\end{equation}
+
+A DAD condicionada \`a mesma predi\c{c}\~ao considera apenas imagens nas quais os
+dois modelos predizem a mesma classe. Definindo
+$\mathcal{S}=\{i:c_{m_E}(x_i)=c_{m_G}(x_i)\}$, tem-se:
+
+\begin{equation}
+DAD_{same}
+= 1 - \frac{1}{|\mathcal{S}|}\sum_{i\in\mathcal{S}} WJ_i.
+\label{eq:dad_same}
+\end{equation}
+
+Essa condi\c{c}\~ao \'{e} central, pois cada mapa explica o logit da classe predita
+pelo pr\'oprio modelo. Quando as classes preditas diferem, os mapas explicam
+alvos distintos e sua compara\c{c}\~ao mistura diverg\^encia espacial com diverg\^encia
+da decis\~ao.
+
+Tamb\'em foram definidos subconjuntos condicionados ao desfecho da predi\c{c}\~ao:
+
+\begin{align}
+\mathcal{C}_{both} &=
+\{i:c_{m_E}(x_i)=y_i \land c_{m_G}(x_i)=y_i\},\\
+\mathcal{W}_{both} &=
+\{i:c_{m_E}(x_i)\neq y_i \land c_{m_G}(x_i)\neq y_i\},\\
+\mathcal{W}_{same} &=
+\{i\in\mathcal{W}_{both}:c_{m_E}(x_i)=c_{m_G}(x_i)\},\\
+\mathcal{O}_{one} &=
+\{i:\mathbb{I}[c_{m_E}(x_i)=y_i]+\mathbb{I}[c_{m_G}(x_i)=y_i]=1\}.
+\end{align}
+
+O gap bruto de concord\^ancia \'{e} definido como:
+
+\begin{equation}
+Gap_{bruto} =
+\frac{1}{|\mathcal{C}_{both}|}\sum_{i\in\mathcal{C}_{both}} WJ_i
+-
+\frac{1}{|\mathcal{W}_{both}|}\sum_{i\in\mathcal{W}_{both}} WJ_i.
+\label{eq:raw_gap}
+\end{equation}
+
+O gap controlado substitui o conjunto de todos os erros pelo subconjunto no qual
+ambos erram a mesma classe:
+
+\begin{equation}
+Gap_{controlado} =
+\frac{1}{|\mathcal{C}_{both}|}\sum_{i\in\mathcal{C}_{both}} WJ_i
+-
+\frac{1}{|\mathcal{W}_{same}|}\sum_{i\in\mathcal{W}_{same}} WJ_i.
+\label{eq:controlled_gap}
+\end{equation}
+
+Esse controle evita interpretar como efeito do acerto uma diferen\c{c}a que pode
+ser causada pelo fato de os mapas explicarem classes-alvo distintas. Os
+intervalos de 95\% foram estimados por bootstrap n\~ao param\'etrico sobre as
+imagens do conjunto de teste, com 2.000 reamostragens. Assim, os intervalos
+descrevem a incerteza da m\'edia para este par fixo de modelos, e n\~ao a
+variabilidade entre diferentes treinamentos.
+
+\section{Resultados}
+
+\subsection{Controle de comparabilidade preditiva}
+
+A Tabela~\ref{tab:predictive_results} apresenta as acur\'acias dos modelos
+avaliados. Esses valores s\~ao reportados como controle de comparabilidade, e n\~ao
+como desfecho central do estudo. A an\'alise de interpretabilidade s\'o \'{e}
+informativa se os modelos comparados produzem predi\c{c}\~oes minimamente
+relevantes para a tarefa. Portanto, a acur\'acia \'{e} usada para contextualizar a
+validade da compara\c{c}\~ao dos mapas de atribui\c{c}\~ao, n\~ao para estabelecer qual
+otimizador \'{e} preditivamente superior.
+
+\begin{table}[ht]
+\centering
+\caption{Acur\'acias usadas como controle de comparabilidade no MNIST.}
+\label{tab:predictive_results}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Modelo} & \textbf{Acur\'acia final} & \textbf{Melhor acur\'acia observada} \\
+\midrule
+Baseline MLP + SGD & 84,66\% & 97,18\% \\
+NEAT puro selecionado & 82,88\% & 82,88\% \\
+Topologia NEAT + SGD & 77,54\% & 78,64\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Como o foco do trabalho \'{e} a compara\c{c}\~ao dos padr\~oes espaciais de
+sensibilidade, essas acur\'acias n\~ao s\~ao interpretadas como evid\^encia
+conclusiva de superioridade preditiva. Elas apenas indicam que os modelos
+analisados possuem desempenho suficiente para que seus mapas de atribui\c{c}\~ao
+sejam comparados de forma informativa.
+
+\subsection{Variantes neuroevolutivas}
+
+A Tabela~\ref{tab:neat_variants} resume as variantes neuroevolutivas avaliadas.
+A diferen\c{c}a entre \textit{seeded prototypes} e HyperNEAT no desempenho puro foi
+de apenas 0,04 ponto percentual. Assim, nesta execu\c{c}\~ao, essas duas variantes
+devem ser tratadas como empiricamente equivalentes.
+
+\begin{table}[ht]
+\centering
+\caption{Resultados das variantes neuroevolutivas.}
+\label{tab:neat_variants}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Variante} & \textbf{NEAT puro} & \textbf{Topologia + SGD} & \textbf{Conex\~oes} \\
+\midrule
+Features & 37,64\% & 85,63\% & 618 \\
+Seeded prototypes & 82,88\% & 77,54\% & 200 \\
+HyperNEAT/CPPN & 82,84\% & 77,92\% & 16 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As 16 conex\~oes reportadas para o HyperNEAT pertencem ao CPPN gerador e n\~ao
+s\~ao diretamente compar\'aveis \`as 200 conex\~oes expl\'icitas da rede NEAT. Logo,
+a tabela n\~ao demonstra que a rede funcional gerada pelo HyperNEAT possua apenas
+16 conex\~oes. Al\'em disso, o melhor fitness da variante selecionada permaneceu
+em 1,6272 da gera\c{c}\~ao 0 \`a gera\c{c}\~ao 34, indicando que o melhor indiv\'iduo j\'a
+estava presente na popula\c{c}\~ao inicial semeada e n\~ao foi superado durante a
+evolu\c{c}\~ao.
+
+\subsection{Concord\^ancia dos mapas de interpretabilidade}
+
+A Tabela~\ref{tab:interpretability_results} apresenta os resultados agregados
+de interpretabilidade para a compara\c{c}\~ao entre NEAT puro e NEAT + SGD. A DAD
+global foi 0,323, equivalente a um Jaccard ponderado m\'edio de 0,677. Esse valor
+indica sobreposi\c{c}\~ao espacial substancial entre os mapas, embora n\~ao indique
+identidade.
+
+\begin{table}[ht]
+\centering
+\caption{M\'etricas de concord\^ancia espacial entre NEAT puro e NEAT + SGD.}
+\label{tab:interpretability_results}
+\begin{tabular}{lcc}
+\toprule
+\textbf{M\'etrica} & \textbf{Valor} & \textbf{Observa\c{c}\~ao} \\
+\midrule
+Jaccard ponderado global & 0,677 & Concord\^ancia min--max m\'edia \\
+DAD global & 0,323 & IC95\% [0,321; 0,325] \\
+DAD macro & 0,324 & Pr\'oxima da DAD global \\
+Concord\^ancia de predi\c{c}\~ao & 85,28\% & 8.528 imagens \\
+Jaccard com mesma predi\c{c}\~ao & 0,714 & DAD = 0,286 \\
+Jaccard quando ambos acertam & 0,714 & 7.438 imagens \\
+Jaccard quando ambos erram & 0,658 & 1.396 imagens \\
+Jaccard no erro com mesma classe & 0,714 & 1.090 imagens \\
+Gap bruto & 0,057 & IC95\% [0,049; 0,064] \\
+Gap controlado & -0,00007 & IC95\% [-0,0043; 0,0042] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A DAD macro foi 0,324, praticamente igual \`a DAD global. A diferen\c{c}a de
+aproximadamente 0,002 \'{e} desprez\'ivel na escala da m\'etrica, sugerindo que o
+resultado agregado n\~ao foi determinado pela distribui\c{c}\~ao das classes no
+conjunto de teste.
+
+Quando os dois modelos predisseram a mesma classe, o Jaccard ponderado subiu
+para 0,714, correspondendo a uma DAD condicionada de 0,286. Essa redu\c{c}\~ao em
+rela\c{c}\~ao \`a DAD global \'{e} pequena em magnitude absoluta, mas consistente com a
+interpreta\c{c}\~ao esperada: mapas que explicam a mesma classe tendem a ser mais
+semelhantes do que mapas que explicam classes diferentes.
+
+O Jaccard foi 0,714 quando ambos os modelos acertaram e 0,658 quando ambos
+erraram. O gap bruto de 0,057 possui intervalo de confian\c{c}a que n\~ao inclui
+zero, indicando uma diferen\c{c}a est\'avel neste conjunto de imagens. Entretanto,
+essa compara\c{c}\~ao mistura dois fatores: o desfecho da predi\c{c}\~ao e a classe que
+est\'a sendo explicada.
+
+Esse ponto \'{e} decisivo para a interpreta\c{c}\~ao. Entre os 1.396 erros conjuntos,
+1.090 produziram a mesma classe incorreta e 306 produziram classes diferentes.
+Quando ambos erraram a mesma classe, o Jaccard foi 0,714, o mesmo valor observado
+nos acertos. Quando erraram classes diferentes, o Jaccard caiu para 0,456. Como
+resultado, o gap controlado foi -0,00007, com IC95\% [-0,0043; 0,0042]. Essa
+magnitude \'{e} praticamente nula na escala [0,1]. Portanto, n\~ao h\'a evid\^encia de
+diferen\c{c}a pr\'atica entre a concord\^ancia espacial dos acertos e a dos erros
+quando a classe explicada \'{e} controlada.
+
+\section{Discuss\~ao}
+
+Os resultados mostram que NEAT puro e NEAT + SGD n\~ao produzem mapas id\^enticos:
+o Jaccard ponderado global foi 0,677. Contudo, essa diferen\c{c}a n\~ao sustenta a
+interpreta\c{c}\~ao de que os dois procedimentos tenham aprendido estrat\'egias
+espaciais opostas ou substancialmente distintas. Quando a classe explicada \'{e} a
+mesma, o Jaccard ponderado se estabiliza em 0,714 tanto nos acertos quanto nos
+erros com a mesma classe prevista.
+
+Assim, a diverg\^encia adicional dos heatmaps n\~ao decorre primariamente do
+otimizador, mas da classe que est\'a sendo explicada. Quando os modelos escolhem
+classes diferentes, seus mapas de oclus\~ao explicam logits diferentes; nesse
+caso, a redu\c{c}\~ao da concord\^ancia espacial \'{e} esperada. Quando a classe-alvo
+coincide, a concord\^ancia espacial \'{e} praticamente a mesma.
+
+A conclus\~ao interpretativa \'{e}, portanto, que NEAT puro e NEAT + SGD produzem
+solu\c{c}\~oes param\'etricas diferentes, mas recorrem a padr\~oes espaciais
+semelhantes de sensibilidade de entrada quando sustentam a mesma decis\~ao. Essa
+afirma\c{c}\~ao n\~ao implica igualdade de pesos, equival\^encia de representa\c{c}\~oes
+internas ou identidade causal. Ela indica converg\^encia funcional no n\'ivel
+observ\'avel pelos mapas de oclus\~ao.
+
+Do ponto de vista metodol\'ogico, o contraste relevante n\~ao \'{e} a efici\^encia
+computacional do treinamento, mas a origem dos par\^ametros comparados. O modelo
+NEAT puro tem pesos obtidos por neuroevolu\c{c}\~ao, enquanto a condi\c{c}\~ao NEAT +
+SGD mant\'em a topologia evolu\'ida, reinicializa os pesos e os ajusta por SGD via
+backpropagation. Essa separa\c{c}\~ao permite perguntar se a forma de obten\c{c}\~ao dos
+pesos altera o padr\~ao espacial de sensibilidade, mantendo fixa a estrutura
+evolu\'ida.
+
+\section{Limita\c{c}\~oes}
+
+Este estudo possui limita\c{c}\~oes importantes. Primeiro, foi analisada uma \'unica
+semente; portanto, os intervalos de bootstrap refletem a varia\c{c}\~ao entre
+imagens para um par fixo de modelos, e n\~ao a variabilidade entre treinamentos
+independentes. Segundo, as acur\'acias s\~ao usadas apenas como controle de
+comparabilidade; o estudo n\~ao foi desenhado para comparar de forma conclusiva
+desempenho preditivo entre otimizadores. Terceiro, a DAD \'{e} uma m\'etrica
+operacional proposta neste estudo e n\~ao possui categorias universais de
+magnitude. Por fim, mapas de oclus\~ao medem sensibilidade da sa\'ida a
+perturba\c{c}\~oes da entrada, mas n\~ao provam causalidade interna ou equival\^encia
+entre representa\c{c}\~oes neurais.
+
+\section{Conclus\~ao}
+
+Este experimento permite uma conclus\~ao substantiva: NEAT puro e NEAT + SGD
+apresentam padr\~oes espaciais de sensibilidade semelhantes quando sustentam a
+mesma decis\~ao de classe. O Jaccard ponderado foi 0,714 tanto nos acertos quanto
+nos erros em que ambos os modelos escolheram a mesma classe, e o gap controlado
+foi praticamente nulo. Assim, a diverg\^encia espacial observada no conjunto
+completo acompanha principalmente a diverg\^encia das decis\~oes, e n\~ao o tipo de
+otimizador utilizado para ajustar os pesos.
+
+As acur\'acias observadas s\~ao suficientes para contextualizar a compara\c{c}\~ao,
+mas n\~ao constituem o achado principal. O resultado central \'{e}
+interpretativo: dentro da configura\c{c}\~ao analisada, n\~ao h\'a evid\^encia de que a
+otimiza\c{c}\~ao evolutiva e o treinamento por SGD sobre a topologia evolu\'ida
+produzam padr\~oes espacialmente distintos de fundamenta\c{c}\~ao da predi\c{c}\~ao
+quando a classe prevista \'{e} a mesma.
+
+Em s\'intese, os mecanismos de busca s\~ao diferentes; contudo, quando a decis\~ao
+de classe coincide, os modelos apresentam regi\~oes semelhantes de sensibilidade
+segundo a m\'etrica de oclus\~ao adotada.
