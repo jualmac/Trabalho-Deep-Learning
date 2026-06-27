@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 import os
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
-
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 from matplotlib.backends.backend_pdf import PdfPages
+
+import pandas as pd
+
+from src.neuroevolution_mvp.export_interpretability_metrics import dad
+from src.neuroevolution_mvp.export_interpretability_metrics import weighted_jaccard
 
 from .data import load_dataset
 from .interpretability import compare_maps, occlusion_map, prediction_summary, block_occlusion_map
@@ -34,17 +41,44 @@ from .neat_runner import (
     load_neat_config,
 )
 
+class FlattenInputModel(nn.Module):
+    def __init__(self, model: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        if features.ndim > 2:
+            features = features.reshape(features.size(0), -1)
+
+        return self.model(features)
+
+def _load_results_from_artifact(artifact_dir: Path) -> dict[str, Any]:
+    default_path = artifact_dir / "results.json"
+
+    if default_path.exists():
+        return load_json(default_path)
+
+    result_files = sorted(artifact_dir.glob("results*.json"))
+
+    if not result_files:
+        raise FileNotFoundError(
+            f"No results JSON found in artifact dir: {artifact_dir}"
+        )
+
+    return load_json(result_files[0])
+
 
 def export_interpretability_pdf(
     config: ExperimentConfig,
     output_path: Path,
     sample_count: int = 12,
     pdf_group: str = "both_correct",
+    occlusion_window: int = 3,
 ) -> Path:
     """Export the image and NEAT/SGD attention maps to a standalone PDF."""
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    results = load_json(config.artifact_dir / "results.json")
+    results = _load_results_from_artifact(config.artifact_dir)
     summary = results.get("summary", {})
     family = str(summary.get("selected_neat_family", "direct")).strip().lower()
 
@@ -112,6 +146,9 @@ def export_interpretability_pdf(
             encoder=baseline,
             classifier=evolved,
         )
+    else:
+        neat_pure = FlattenInputModel(neat_pure)
+        evolved = FlattenInputModel(evolved)
 
     groups = _correctness_groups(
         labels=data.y_test,
@@ -119,7 +156,7 @@ def export_interpretability_pdf(
         baseline=baseline,
         evolved=evolved,
         image_size=config.image_size,
-        image_channels=config.image_channels,
+        image_channels=image_channels
     )
 
     indices = groups[pdf_group][:sample_count]
@@ -128,29 +165,38 @@ def export_interpretability_pdf(
         remaining = sample_count - len(indices)
         indices.extend(groups["evolved_correct_baseline_wrong"][:remaining])
 
+    records: list[dict[str, int | float]] = []
+
     with PdfPages(output_path) as pdf:
         _write_cover(pdf, results, len(indices), config.dataset)
         for page_number, index in enumerate(indices, start=1):
             image = _reshape_image(
-                            data.x_test[index],
-                            config.image_size,
-                            image_channels,
-                        )
+                data.x_test[index],
+                config.image_size,
+                image_channels,
+            )
             label = int(data.y_test[index].item())
             pdf.savefig(
                 _sample_figure(
-                    page_number=page_number,
-                    sample_index=index,
-                    label=label,
-                    image=image,
-                    baseline=baseline,
-                    neat_pure=neat_pure,
-                    evolved=evolved,
-                    image_size=config.image_size,
-                )
+                        page_number=page_number,
+                        sample_index=index,
+                        label=label,
+                        image=image,
+                        baseline=baseline,
+                        neat_pure=neat_pure,
+                        evolved=evolved,
+                        image_size=config.image_size,
+                        records=records,
+                        occlusion_window=occlusion_window,
+                    )
             )
             plt.close()
-
+    
+    records_data = pd.DataFrame(records)
+    records_data.to_csv(
+        config.artifact_dir / "interpretability_records.csv",
+        index=False,
+    )
     return output_path
 
 
@@ -379,21 +425,66 @@ def _sample_figure(
     sample_index: int,
     label: int,
     image: torch.Tensor,
-    baseline: BaselineMLP,
-    neat_pure: FixedNeatTopologyMLP,
-    evolved: EvolvedTopologyMLP,
+    baseline,
+    neat_pure,
+    evolved,
     image_size: int,
+    records: list[dict[str, int | float]],
+    occlusion_window: int,
 ):
-    baseline_map = block_occlusion_map(baseline, image, image_size, patch_size=3, stride=1)
-    neat_map = block_occlusion_map(neat_pure, image, image_size, patch_size=3, stride=1)
-    evolved_map = block_occlusion_map(evolved, image, image_size, patch_size=3, stride=1)
+    baseline_map = block_occlusion_map(
+        baseline,
+        image,
+        image_size,
+        patch_size=occlusion_window,
+        stride=1,
+    )
+    neat_map = block_occlusion_map(
+        neat_pure,
+        image,
+        image_size,
+        patch_size=occlusion_window,
+        stride=1,
+    )
+    evolved_map = block_occlusion_map(
+        evolved,
+        image,
+        image_size,
+        patch_size=occlusion_window,
+        stride=1,
+    )
+
     difference_map = torch.abs(neat_map - evolved_map)
     comparison = compare_maps(neat_map, evolved_map)
+
     predictions = [
         ("Baseline", prediction_summary(baseline, image)),
         ("NEAT puro", prediction_summary(neat_pure, image)),
         ("NEAT + SGD", prediction_summary(evolved, image)),
     ]
+
+    baseline_prediction = int(predictions[0][1]["class"])
+    neat_pure_prediction = int(predictions[1][1]["class"])
+    evolved_prediction = int(predictions[2][1]["class"])
+
+    neat_map_numpy = neat_map.detach().cpu().numpy()
+    evolved_map_numpy = evolved_map.detach().cpu().numpy()
+
+    record = {
+        "sample_index": int(sample_index),
+        "true_label": int(label),
+        "baseline_prediction": baseline_prediction,
+        "neat_pure_prediction": neat_pure_prediction,
+        "neat_gradient_prediction": evolved_prediction,
+        "baseline_correct": int(baseline_prediction == label),
+        "neat_pure_correct": int(neat_pure_prediction == label),
+        "neat_gradient_correct": int(evolved_prediction == label),
+        "same_prediction": int(neat_pure_prediction == evolved_prediction),
+        "weighted_jaccard": weighted_jaccard(neat_map_numpy, evolved_map_numpy),
+        "dad": dad(neat_map_numpy, evolved_map_numpy),
+    }
+
+    records.append(record)
 
     fig, axes = plt.subplots(1, 5, figsize=(13.5, 3.6), facecolor="white")
     panels = [
@@ -403,11 +494,19 @@ def _sample_figure(
         (evolved_map, "Olhar: NEAT + SGD", "Greens"),
         (difference_map, "Diferenca NEAT vs SGD", "summer"),
     ]
+
     for ax, (matrix, title, cmap) in zip(axes, panels, strict=True):
         if matrix.ndim == 3:
-            ax.imshow(matrix.detach().permute(1, 2, 0).numpy(), interpolation="nearest")
+            ax.imshow(
+                matrix.detach().permute(1, 2, 0).numpy(),
+                interpolation="nearest",
+            )
         else:
-            ax.imshow(matrix.detach().numpy(), cmap=cmap, interpolation="nearest")
+            ax.imshow(
+                matrix.detach().numpy(),
+                cmap=cmap,
+                interpolation="nearest",
+            )
         ax.set_title(title, fontsize=10)
         ax.set_xticks([])
         ax.set_yticks([])
@@ -416,17 +515,19 @@ def _sample_figure(
         f"{name}: {int(row['class'])} ({float(row['confidence']):.1%})"
         for name, row in predictions
     )
+
     fig.suptitle(
         (
             f"Pagina {page_number} - amostra {sample_index} - rotulo real {label}\n"
-            f"{prediction_text} | similaridade NEAT/SGD: {comparison['cosine_similarity']:.2f} | "
+            f"{prediction_text} | similaridade NEAT/SGD: "
+            f"{comparison['cosine_similarity']:.2f} | "
             f"pixels comuns: {comparison['top_pixel_overlap']:.1%}"
         ),
         fontsize=12,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.82))
-    return fig
 
+    return fig
 
 def _reshape_image(image: torch.Tensor, image_size: int, image_channels: int) -> torch.Tensor:
     if image_channels == 1:
@@ -521,3 +622,91 @@ def _fmt_accuracy(value: object) -> str:
     if isinstance(value, int | float):
         return f"{value:.1%}"
     return "n/a"
+def _config_from_artifact(artifact_dir: Path) -> ExperimentConfig:
+    results = _load_results_from_artifact(artifact_dir)
+    config_values = dict(results.get("config", {}))
+
+    valid_fields = {field.name for field in fields(ExperimentConfig)}
+    filtered_values = {
+        key: value
+        for key, value in config_values.items()
+        if key in valid_fields
+    }
+
+    filtered_values["artifact_dir"] = artifact_dir
+
+    if "neat_config_path" in filtered_values:
+        filtered_values["neat_config_path"] = Path(
+            str(filtered_values["neat_config_path"])
+        )
+
+    if "neat_variant_paths" in filtered_values:
+        filtered_values["neat_variant_paths"] = tuple(
+            Path(str(path))
+            for path in filtered_values["neat_variant_paths"]
+        )
+
+    return ExperimentConfig(**filtered_values)
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Export interpretability PDF and per-sample metrics."
+    )
+    parser.add_argument(
+        "--artifact-dir",
+        type=Path,
+        required=True,
+        help="Directory containing trained artifacts.",
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=12,
+        help="Number of samples to include in the PDF and CSV.",
+    )
+    parser.add_argument(
+        "--occlusion-window",
+        type=int,
+        default=3,
+        help="Occlusion patch size.",
+    )
+    parser.add_argument(
+        "--pdf-group",
+        type=str,
+        default="both_correct",
+        choices=[
+            "both_correct",
+            "baseline_correct_evolved_wrong",
+            "evolved_correct_baseline_wrong",
+            "both_wrong",
+        ],
+        help="Group of samples used in the PDF.",
+    )
+    parser.add_argument("--output-name", type=str, default=None, help="Nome do PDF de saída.")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
+    config = _config_from_artifact(args.artifact_dir)
+
+    output_name = args.output_name or f"{config.dataset}_interpretability_validation.pdf"
+    output_path = args.artifact_dir / output_name
+    
+    pdf_path = export_interpretability_pdf(
+        config=config,
+        output_path=output_path,
+        sample_count=args.num_samples,
+        pdf_group=args.pdf_group,
+        occlusion_window=args.occlusion_window,
+    )
+
+    records_path = args.artifact_dir / "interpretability_records.csv"
+
+    print(f"PDF salvo em: {pdf_path}")
+    print(f"CSV salvo em: {records_path}")
+
+
+if __name__ == "__main__":
+    main()

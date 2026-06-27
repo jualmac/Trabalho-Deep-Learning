@@ -1,0 +1,17 @@
+{
+  "n_records": 10,
+  "global_weighted_jaccard": 0.3236553262358117,
+  "global_dad": 0.6763446737641884,
+  "global_dad_ci95_lower": 0.6298088254979873,
+  "global_dad_ci95_upper": 0.7260352686921453,
+  "prediction_agreement": 0.4,
+  "same_prediction_jaccard": 0.3047782018659945,
+  "both_correct_jaccard": 0.3047782018659945,
+  "both_wrong_jaccard": 0.0,
+  "same_wrong_prediction_jaccard": 0.0,
+  "raw_gap": 0.0,
+  "n_same_prediction": 4,
+  "n_both_correct": 4,
+  "n_both_wrong": 0,
+  "n_same_wrong_prediction": 0
+}
